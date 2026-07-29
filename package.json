@@ -1,0 +1,30 @@
+{
+  "name": "gestao-projetos-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma web para gestao de projetos, ordens de servico, tarefas, registros diarios e auditoria.",
+  "scripts": {
+    "db:validate": "prisma validate --schema packages/database/prisma/schema.prisma",
+    "db:format": "prisma format --schema packages/database/prisma/schema.prisma",
+    "db:generate": "prisma generate --schema packages/database/prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema packages/database/prisma/schema.prisma",
+    "db:studio": "prisma studio",
+    "db:seed": "tsx packages/database/prisma/seed.ts"
+  },
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "packages/database"
+  ],
+  "devDependencies": {
+    "prisma": "^7.9.0",
+    "tsx": "^4.23.1"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.0",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.4.2",
+    "pg": "^8.22.0"
+  }
+}

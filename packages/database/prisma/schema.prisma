@@ -1,0 +1,555 @@
+// ======================================================
+// Gestão de Projetos Web
+// Banco: PostgreSQL
+// ORM: Prisma
+// Versão: MVP Interno
+// ======================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ======================================================
+// ENUMS
+// ======================================================
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELED
+}
+
+enum PlanType {
+  INTERNAL
+  FREE
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MANAGER
+  MEMBER
+  REQUESTER
+  VIEWER
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ProjectStatus {
+  PLANNED
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+  CANCELED
+}
+
+enum TaskStatus {
+  PLANNED
+  TODO
+  DOING
+  DONE
+  CANCELED
+}
+
+enum ServiceOrderStatus {
+  OPEN
+  IN_REVIEW
+  IN_PROGRESS
+  WAITING_REQUESTER
+  COMPLETED
+  CANCELED
+}
+
+enum RefType {
+  PROJECT
+  TASK
+  SERVICE_ORDER
+  SERVICE_ORDER_TASK
+  DAILY_LOG
+}
+
+enum DailyLogStatus {
+  COMPLETED
+  IN_PROGRESS
+  PENDING
+  WAITING_RETURN
+}
+
+enum DailyLogVisibility {
+  PRIVATE
+  SUPERVISION
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  STATUS_CHANGE
+  COMMENT
+  ATTACHMENT
+  ASSIGN
+  COMPLETE
+  CANCEL
+}
+
+enum BillingStatus {
+  NONE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+// ======================================================
+// TENANT / CONTA
+// ======================================================
+
+model Tenant {
+  id              String        @id @default(uuid())
+  name            String
+  slug            String        @unique
+  status          TenantStatus  @default(ACTIVE)
+  plan            PlanType      @default(INTERNAL)
+  billingStatus   BillingStatus @default(NONE)
+
+  users           User[]
+  projects        Project[]
+  tasks           Task[]
+  serviceOrders   ServiceOrder[]
+  serviceOrderTasks ServiceOrderTask[]
+  comments        Comment[]
+  attachments     Attachment[]
+  dailyLogs       DailyLog[]
+  auditLogs       AuditLog[]
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([status])
+  @@index([plan])
+}
+
+// ======================================================
+// USUÁRIOS / AUTENTICAÇÃO
+// ======================================================
+
+model User {
+  id                    String     @id @default(uuid())
+  tenantId              String
+
+  name                  String
+  email                 String
+  passwordHash           String
+  role                  UserRole   @default(REQUESTER)
+  status                UserStatus @default(PENDING)
+
+  phone                 String?
+  avatarUrl             String?
+
+  lastLoginAt           DateTime?
+  emailVerifiedAt       DateTime?
+
+  tenant                Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  ownedProjects          Project[] @relation("ProjectOwner")
+  assignedTasks          Task[]    @relation("TaskAssignee")
+
+  requestedServiceOrders ServiceOrder[] @relation("ServiceOrderRequester")
+  responsibleServiceOrders ServiceOrder[] @relation("ServiceOrderResponsible")
+  assignedServiceOrderTasks ServiceOrderTask[] @relation("ServiceOrderTaskResponsible")
+
+  comments              Comment[]
+  attachments           Attachment[]
+  dailyLogs             DailyLog[]
+  auditLogs             AuditLog[]
+  refreshTokens          RefreshToken[]
+
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([role])
+  @@index([status])
+}
+
+model RefreshToken {
+  id          String   @id @default(uuid())
+  userId      String
+
+  tokenHash   String
+  userAgent   String?
+  ipAddress   String?
+  expiresAt   DateTime
+  revokedAt   DateTime?
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ======================================================
+// PROJETOS
+// ======================================================
+
+model Project {
+  id          String        @id @default(uuid())
+  tenantId    String
+  ownerId     String
+
+  title       String
+  description String?
+  area        String?
+  unit        String?
+  tags        String?
+
+  priority    Priority      @default(MEDIUM)
+  status      ProjectStatus @default(PLANNED)
+
+  startDate   DateTime?
+  dueDate     DateTime?
+  finishedAt  DateTime?
+
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner       User          @relation("ProjectOwner", fields: [ownerId], references: [id])
+
+  tasks       Task[]
+  comments    Comment[]
+  attachments Attachment[]
+  dailyLogs   DailyLog[]
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([tenantId])
+  @@index([ownerId])
+  @@index([status])
+  @@index([priority])
+  @@index([createdAt])
+}
+
+// ======================================================
+// TAREFAS DE PROJETOS
+// ======================================================
+
+model Task {
+  id            String     @id @default(uuid())
+  tenantId      String
+  projectId     String
+  assigneeId    String?
+
+  title         String
+  description   String?
+  type          String?
+
+  priority      Priority   @default(MEDIUM)
+  status        TaskStatus @default(TODO)
+
+  taskDate      DateTime?
+  estimateHours Decimal?   @db.Decimal(10, 2)
+
+  startedAt     DateTime?
+  dueDate       DateTime?
+  finishedAt    DateTime?
+
+  order         Int?
+  dependsOnId   String?
+
+  tenant        Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project       Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee      User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+
+  comments      Comment[]
+  attachments   Attachment[]
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([assigneeId])
+  @@index([status])
+  @@index([priority])
+  @@index([taskDate])
+}
+
+// ======================================================
+// ORDENS DE SERVIÇO
+// ======================================================
+
+model ServiceOrder {
+  id              String             @id @default(uuid())
+  tenantId        String
+  requesterId     String
+  responsibleId   String?
+
+  title           String
+  description     String
+
+  category        String?
+  system          String?
+  unit            String?
+  channel         String?
+  origin          String?
+  tags            String?
+
+  priority        Priority?
+  status          ServiceOrderStatus @default(OPEN)
+
+  dueDate         DateTime?
+  finishedAt      DateTime?
+  observation     String?
+
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requester       User               @relation("ServiceOrderRequester", fields: [requesterId], references: [id])
+  responsible     User?              @relation("ServiceOrderResponsible", fields: [responsibleId], references: [id])
+
+  tasks           ServiceOrderTask[]
+  comments        Comment[]
+  attachments     Attachment[]
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([tenantId])
+  @@index([requesterId])
+  @@index([responsibleId])
+  @@index([status])
+  @@index([priority])
+  @@index([createdAt])
+  @@index([dueDate])
+}
+
+// ======================================================
+// TAREFAS VINCULADAS À ORDEM DE SERVIÇO
+// ======================================================
+
+model ServiceOrderTask {
+  id              String       @id @default(uuid())
+  tenantId        String
+  serviceOrderId  String
+  responsibleId   String?
+
+  title           String
+  description     String?
+
+  priority        Priority     @default(MEDIUM)
+  status          TaskStatus   @default(TODO)
+
+  startedAt       DateTime?
+  dueDate         DateTime?
+  finishedAt      DateTime?
+
+  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceOrder    ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  responsible     User?        @relation("ServiceOrderTaskResponsible", fields: [responsibleId], references: [id])
+
+  comments        Comment[]
+  attachments     Attachment[]
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([tenantId])
+  @@index([serviceOrderId])
+  @@index([responsibleId])
+  @@index([status])
+  @@index([priority])
+}
+
+// ======================================================
+// COMENTÁRIOS
+// ======================================================
+
+model Comment {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  authorId            String
+
+  refType             RefType
+  refId               String
+
+  text                String
+
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  author              User     @relation(fields: [authorId], references: [id])
+
+  projectId           String?
+  project             Project? @relation(fields: [projectId], references: [id])
+
+  taskId              String?
+  task                Task?    @relation(fields: [taskId], references: [id])
+
+  serviceOrderId      String?
+  serviceOrder        ServiceOrder? @relation(fields: [serviceOrderId], references: [id])
+
+  serviceOrderTaskId  String?
+  serviceOrderTask    ServiceOrderTask? @relation(fields: [serviceOrderTaskId], references: [id])
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([authorId])
+  @@index([refType, refId])
+  @@index([createdAt])
+}
+
+// ======================================================
+// ANEXOS
+// ======================================================
+
+model Attachment {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  uploadedById         String
+
+  refType             RefType
+  refId               String
+
+  fileName            String
+  originalName         String?
+  mimeType            String
+  size                Int
+
+  storageKey          String
+  url                 String?
+
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  uploadedBy           User     @relation(fields: [uploadedById], references: [id])
+
+  projectId           String?
+  project             Project? @relation(fields: [projectId], references: [id])
+
+  taskId              String?
+  task                Task?    @relation(fields: [taskId], references: [id])
+
+  serviceOrderId      String?
+  serviceOrder        ServiceOrder? @relation(fields: [serviceOrderId], references: [id])
+
+  serviceOrderTaskId  String?
+  serviceOrderTask    ServiceOrderTask? @relation(fields: [serviceOrderTaskId], references: [id])
+
+  createdAt           DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([uploadedById])
+  @@index([refType, refId])
+  @@index([createdAt])
+}
+
+// ======================================================
+// REGISTRO DIÁRIO DE ATIVIDADES
+// ======================================================
+
+model DailyLog {
+  id          String             @id @default(uuid())
+  tenantId    String
+  userId      String
+  projectId   String?
+
+  date        DateTime
+  time        String?
+
+  title       String
+  type        String?
+  description String?
+
+  status      DailyLogStatus     @default(COMPLETED)
+  visibility  DailyLogVisibility @default(PRIVATE)
+
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     Project?           @relation(fields: [projectId], references: [id])
+
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([projectId])
+  @@index([date])
+  @@index([visibility])
+}
+
+// ======================================================
+// AUDITORIA
+// ======================================================
+
+model AuditLog {
+  id          String      @id @default(uuid())
+  tenantId    String
+  userId      String?
+
+  action      AuditAction
+  entity      String
+  entityId    String?
+
+  ipAddress   String?
+  userAgent   String?
+
+  metadata    Json?
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User?       @relation(fields: [userId], references: [id])
+
+  createdAt   DateTime    @default(now())
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([action])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// ======================================================
+// ASSINATURAS FUTURAS
+// Não será usado no MVP interno.
+// ======================================================
+
+model Subscription {
+  id                     String        @id @default(uuid())
+  tenantId               String        @unique
+
+  provider               String?
+  providerCustomerId      String?
+  providerSubscriptionId  String?
+
+  plan                   PlanType      @default(INTERNAL)
+  status                 BillingStatus @default(NONE)
+
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  canceledAt             DateTime?
+
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  @@index([tenantId])
+  @@index([status])
+}
