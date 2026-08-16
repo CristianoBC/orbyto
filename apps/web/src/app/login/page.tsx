@@ -13,15 +13,15 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   useEffect(() => {
-    if (!checking && user) router.replace("/dashboard");
+    if (!checking && user) router.replace(user.role === "REQUESTER" ? "/requester/service-orders" : "/dashboard");
   }, [checking, user, router]);
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
     setLoading(true);
     try {
-      await login(email, password);
-      router.replace("/dashboard");
+      const loggedUser = await login(email, password);
+      router.replace(loggedUser.role === "REQUESTER" ? "/requester/service-orders" : "/dashboard");
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : "Não foi possível entrar.",

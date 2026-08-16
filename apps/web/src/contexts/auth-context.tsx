@@ -8,7 +8,7 @@ import type { AuthUser, LoginResponse } from '@/types/auth';
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  login(email: string, password: string): Promise<void>;
+  login(email: string, password: string): Promise<AuthUser>;
   logout(): void;
 }
 
@@ -34,6 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     authStorage.save(result.accessToken, result.user);
     setUser(result.user);
+    return result.user;
   }, []);
 
   const logout = useCallback(() => { authStorage.clear(); setUser(null); window.location.assign('/login'); }, []);

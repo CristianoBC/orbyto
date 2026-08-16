@@ -32,7 +32,7 @@ export interface ServiceOrderAttachment {
   uploadedBy: ServiceOrderUser & { role?: string; avatarUrl?: string | null };
 }
 
-export type CreateServiceOrder = Pick<ServiceOrder, 'title' | 'description' | 'category' | 'system' | 'unit' | 'priority'>;
+export type CreateServiceOrder = Pick<ServiceOrder, 'title' | 'description' | 'category' | 'system' | 'unit' | 'channel' | 'origin' | 'priority'>;
 export type UpdateServiceOrder = Partial<Pick<ServiceOrder,
   'title' | 'description' | 'category' | 'system' | 'unit' | 'channel' | 'origin' | 'priority' | 'status' | 'observation'
 >> & { responsibleId?: string };
