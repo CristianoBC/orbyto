@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { AttachmentsModule } from './attachments/attachments.module';
 import { AuthModule } from './auth/auth.module';
 import { CommentsModule } from './comments/comments.module';
+import { DailyLogsModule } from './daily-logs/daily-logs.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsModule } from './projects/projects.module';
 import { ServiceOrdersModule } from './service-orders/service-orders.module';
@@ -22,6 +23,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     AttachmentsModule,
     CommentsModule,
+    DailyLogsModule,
     UsersModule,
     ServiceOrdersModule,
     TasksModule,
