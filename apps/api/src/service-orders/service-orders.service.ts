@@ -75,6 +75,7 @@ export class ServiceOrdersService {
 
     const canView =
       administrativeRoles.includes(user.role) ||
+      user.role === UserRole.VIEWER ||
       (user.role === UserRole.REQUESTER &&
         serviceOrder.requesterId === user.id) ||
       (user.role === UserRole.MEMBER &&

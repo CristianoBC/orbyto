@@ -96,13 +96,22 @@ export class TasksService {
     return tasks.map((task) => this.toTaskResponse(task));
   }
 
+  async findAll(tenantId: string, query: ListTasksQueryDto) {
+    const tasks = await this.prisma.task.findMany({
+      where: this.buildWhere(query, { tenantId }),
+      include: taskInclude,
+      orderBy: { createdAt: 'desc' },
+    });
+    return tasks.map((task) => this.toTaskResponse(task));
+  }
+
   async findByProject(
     user: AuthUser,
     projectId: string,
     query: ListTasksQueryDto,
   ) {
     const project = await this.findProject(projectId, user.tenantId);
-    const isAdmin = administrativeRoles.includes(user.role);
+    const isAdmin = administrativeRoles.includes(user.role) || user.role === UserRole.VIEWER;
 
     if (!isAdmin && project.ownerId !== user.id) {
       const assignedTask = await this.prisma.task.findFirst({
@@ -244,6 +253,7 @@ export class TasksService {
   private canAccess(user: AuthUser, task: TaskResult) {
     return (
       administrativeRoles.includes(user.role) ||
+      user.role === UserRole.VIEWER ||
       task.project.ownerId === user.id ||
       task.assigneeId === user.id
     );

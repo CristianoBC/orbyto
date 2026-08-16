@@ -7,12 +7,15 @@ import type { CreateProject, Project, ProjectStatus } from '@/types/project';
 import { EmptyState, ErrorState, formatDate, labels, LoadingState } from '@/components/ui/page-state';
 import { Modal } from '@/components/ui/modal';
 import { Field, FormActions, PageHeader, SelectPriority } from '@/components/ui/forms';
+import { useAuth } from '@/contexts/auth-context';
 
 const initial: CreateProject = { name: '', description: '', department: '', unit: '', priority: 'MEDIUM', status: 'PLANNED', startDate: '', endDate: '' };
 const statuses: ProjectStatus[] = ['PLANNED', 'IN_PROGRESS', 'PAUSED', 'COMPLETED', 'CANCELED'];
 const toIso = (date?: string) => date ? new Date(`${date}T12:00:00`).toISOString() : undefined;
 
 export default function ProjectsPage() {
+  const { can, user } = useAuth();
+  const canCreate = can('PROJECTS', 'create');
   const [items, setItems] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -20,7 +23,7 @@ export default function ProjectsPage() {
   const [form, setForm] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
-  const load = useCallback(async () => { setLoading(true); setError(''); try { setItems(await apiRequest<Project[]>('/projects/my')); } catch (e) { setError(e instanceof Error ? e.message : 'Erro ao carregar.'); } finally { setLoading(false); } }, []);
+  const load = useCallback(async () => { setLoading(true); setError(''); try { setItems(await apiRequest<Project[]>(user?.role === 'VIEWER' ? '/projects' : '/projects/my')); } catch (e) { setError(e instanceof Error ? e.message : 'Erro ao carregar.'); } finally { setLoading(false); } }, [user?.role]);
   useEffect(() => { void load(); }, [load]);
 
   async function submit(event: FormEvent) {
@@ -33,7 +36,7 @@ export default function ProjectsPage() {
   }
 
   return <>
-    <PageHeader title="Projetos" text="Organize iniciativas, responsáveis e entregas." action={() => setOpen(true)} label="Novo projeto" />
+    <PageHeader title="Projetos" text="Organize iniciativas, responsáveis e entregas." action={canCreate ? () => setOpen(true) : undefined} label={canCreate ? 'Novo projeto' : undefined} />
     {error && <ErrorState message={error} retry={load} />}
     {loading ? <LoadingState /> : !items.length ? <EmptyState text="Crie seu primeiro projeto para organizar as entregas." /> : <div className="data-list">{items.map((item) =>
       <Link className="data-card project-card-link" href={`/projects/${item.id}`} key={item.id} aria-label={`Abrir projeto ${item.name}`}>

@@ -8,24 +8,25 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { PermissionModule } from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
+import { RequirePermission } from '../permissions/permissions.decorator';
+import { PermissionsGuard } from '../permissions/permissions.guard';
 import { DailyLogsService } from './daily-logs.service';
 import { CreateDailyLogDto } from './dto/create-daily-log.dto';
 import { ListDailyLogsQueryDto } from './dto/list-daily-logs-query.dto';
 import { UpdateDailyLogDto } from './dto/update-daily-log.dto';
 
 @Controller('daily-logs')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.MEMBER)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission(PermissionModule.DAILY_LOGS)
 export class DailyLogsController {
   constructor(private readonly dailyLogsService: DailyLogsService) {}
 
   @Post()
+  @RequirePermission(PermissionModule.DAILY_LOGS, 'create')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateDailyLogDto) {
     return this.dailyLogsService.create(user, dto);
   }
@@ -33,6 +34,11 @@ export class DailyLogsController {
   @Get('my')
   findMy(@CurrentUser() user: AuthUser, @Query() query: ListDailyLogsQueryDto) {
     return this.dailyLogsService.findMy(user, query);
+  }
+
+  @Get()
+  findAll(@CurrentUser() user: AuthUser, @Query() query: ListDailyLogsQueryDto) {
+    return this.dailyLogsService.findAll(user.tenantId, query);
   }
 
   @Get('project/:projectId')
@@ -59,6 +65,7 @@ export class DailyLogsController {
   }
 
   @Patch(':id')
+  @RequirePermission(PermissionModule.DAILY_LOGS, 'edit')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

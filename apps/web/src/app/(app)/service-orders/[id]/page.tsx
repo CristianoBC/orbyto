@@ -12,7 +12,6 @@ import type { User } from '@/types/auth';
 import type { Priority, ServiceOrder, ServiceOrderAttachment, ServiceOrderComment, ServiceOrderStatus, UpdateServiceOrder } from '@/types/service-order';
 
 const statuses: ServiceOrderStatus[] = ['OPEN', 'IN_REVIEW', 'IN_PROGRESS', 'WAITING_REQUESTER', 'COMPLETED', 'CANCELED'];
-const editableRoles = ['OWNER', 'ADMIN', 'MANAGER'];
 const dateTime = (value?: string | null) => value
   ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
   : 'Não informado';
@@ -37,7 +36,7 @@ function editValues(order: ServiceOrder): UpdateServiceOrder {
 
 export default function ServiceOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [order, setOrder] = useState<ServiceOrder | null>(null);
   const [comments, setComments] = useState<ServiceOrderComment[]>([]);
   const [attachments, setAttachments] = useState<ServiceOrderAttachment[]>([]);
@@ -56,8 +55,9 @@ export default function ServiceOrderDetailPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const canEdit = !!user && editableRoles.includes(user.role);
-  const canAssign = user?.role === 'OWNER' || user?.role === 'ADMIN';
+  const canEdit = can('SERVICE_ORDERS', 'edit');
+  const canContribute = can('SERVICE_ORDERS', 'create') || canEdit;
+  const canAssign = can('SERVICE_ORDERS', 'manage');
 
   const loadOrder = useCallback(async () => {
     const serviceOrder = await apiRequest<ServiceOrder>(`/service-orders/${id}`);
@@ -146,11 +146,11 @@ export default function ServiceOrderDetailPage() {
     <div className="detail-layout"><main className="detail-main">
       <section className="detail-card"><h2>Descrição</h2><p className="order-description">{order.description || 'Nenhuma descrição informada.'}</p><div className="info-grid"><Info label="Categoria" value={order.category} /><Info label="Sistema" value={order.system} /><Info label="Unidade" value={order.unit} /><Info label="Canal" value={order.channel} /><Info label="Origem" value={order.origin} /><Info label="Tags" value={order.tags} /></div>{order.observation && <div className="detail-note"><span>Observações</span><p>{order.observation}</p></div>}</section>
       <section className="detail-card"><div className="section-head"><div><h2>Comentários</h2><p>Acompanhe o histórico e registre atualizações.</p></div><span>{comments.length}</span></div>
-        <form className="comment-form" onSubmit={submitComment}>{commentError && <div className="alert error" role="alert">{commentError}</div>}<textarea aria-label="Novo comentário" placeholder="Escreva um comentário..." rows={4} maxLength={5000} value={text} onChange={(event) => setText(event.target.value)} /><div><small>{text.length}/5000</small><button className="button primary" disabled={commenting || !text.trim()}>{commenting ? 'Publicando...' : 'Publicar comentário'}</button></div></form>
+        {canContribute && <form className="comment-form" onSubmit={submitComment}>{commentError && <div className="alert error" role="alert">{commentError}</div>}<textarea aria-label="Novo comentário" placeholder="Escreva um comentário..." rows={4} maxLength={5000} value={text} onChange={(event) => setText(event.target.value)} /><div><small>{text.length}/5000</small><button className="button primary" disabled={commenting || !text.trim()}>{commenting ? 'Publicando...' : 'Publicar comentário'}</button></div></form>}
         <div className="comment-list">{comments.length === 0 ? <p className="inline-empty">Ainda não há comentários nesta ordem.</p> : comments.map((comment) => <article className="comment" key={comment.id}><span className="avatar">{comment.author.name.slice(0, 2)}</span><div><header><strong>{comment.author.name}</strong><time dateTime={comment.createdAt}>{dateTime(comment.createdAt)}</time></header><p>{comment.text}</p></div></article>)}</div>
       </section>
       <section className="detail-card"><div className="section-head"><div><h2>Anexos</h2><p>Documentos e imagens vinculados à ordem.</p></div><span>{attachments.length}</span></div>
-        {attachmentError && <div className="alert error" role="alert">{attachmentError}</div>}<label className="upload-box"><input ref={inputRef} type="file" disabled={uploading} accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt" onChange={(event) => void upload(event.target.files?.[0])} /><strong>{uploading ? 'Enviando arquivo...' : 'Selecionar arquivo'}</strong><small>Documentos ou imagens de até 10 MB</small></label>
+        {attachmentError && <div className="alert error" role="alert">{attachmentError}</div>}{canContribute && <label className="upload-box"><input ref={inputRef} type="file" disabled={uploading} accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt" onChange={(event) => void upload(event.target.files?.[0])} /><strong>{uploading ? 'Enviando arquivo...' : 'Selecionar arquivo'}</strong><small>Documentos ou imagens de até 10 MB</small></label>}
         <div className="attachment-list">{attachments.length === 0 ? <p className="inline-empty">Nenhum anexo enviado.</p> : attachments.map((attachment) => { const name = attachment.originalName || attachment.fileName; return <article className="attachment" key={attachment.id}><span>⇩</span><div><strong>{name}</strong><small>{fileSize(attachment.size)} · enviado por {attachment.uploadedBy.name} · {dateTime(attachment.createdAt)}</small></div><button type="button" className="button ghost small" onClick={() => void apiDownload(`/attachments/${attachment.id}/download`, name).catch((reason) => setAttachmentError(errorMessage(reason, 'Erro no download.')))}>Baixar</button></article>; })}</div>
       </section>
     </main><aside className="detail-sidebar"><section className="summary-card"><h2>Resumo da OS</h2><Info label="Status" value={labels[order.status]} badge /><Info label="Prioridade" value={labels[order.priority ?? 'MEDIUM']} /><Info label="Solicitante" value={order.requester?.name} subvalue={order.requester?.email} /><Info label="Responsável" value={order.responsible?.name} subvalue={order.responsible?.email} /><Info label="Prazo" value={dateTime(order.dueDate)} /><Info label="Conclusão" value={dateTime(order.finishedAt)} /><Info label="Criada em" value={dateTime(order.createdAt)} /><Info label="Atualizada em" value={dateTime(order.updatedAt)} /></section></aside></div>

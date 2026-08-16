@@ -7,6 +7,7 @@ import {
   UserStatus,
   BillingStatus,
   AuditAction,
+  PermissionModule,
 } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcryptjs';
@@ -69,6 +70,21 @@ async function main() {
       emailVerifiedAt: now,
     },
   });
+
+  const operational = new Set([PermissionModule.DASHBOARD, PermissionModule.PROJECTS, PermissionModule.TASKS, PermissionModule.KANBAN, PermissionModule.DAILY_LOGS, PermissionModule.SCHEDULE]);
+  for (const role of Object.values(UserRole)) {
+    for (const module of Object.values(PermissionModule)) {
+      const ownerOrAdmin = role === UserRole.OWNER || role === UserRole.ADMIN;
+      const manager = role === UserRole.MANAGER && module !== PermissionModule.REQUESTER_PORTAL && module !== PermissionModule.USERS;
+      const member = role === UserRole.MEMBER && operational.has(module);
+      const requester = role === UserRole.REQUESTER && module === PermissionModule.REQUESTER_PORTAL;
+      const enabled = ownerOrAdmin || manager || member || requester;
+      await prisma.rolePermission.upsert({
+        where: { tenantId_role_module: { tenantId: tenant.id, role, module } }, update: {},
+        create: { tenantId: tenant.id, role, module, canView: enabled, canCreate: enabled, canEdit: enabled, canDelete: ownerOrAdmin, canManage: ownerOrAdmin },
+      });
+    }
+  }
 
   await prisma.auditLog.create({
     data: {

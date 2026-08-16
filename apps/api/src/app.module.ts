@@ -11,6 +11,7 @@ import { ProjectsModule } from './projects/projects.module';
 import { ServiceOrdersModule } from './service-orders/service-orders.module';
 import { TasksModule } from './tasks/tasks.module';
 import { UsersModule } from './users/users.module';
+import { PermissionsModule } from './permissions/permissions.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { UsersModule } from './users/users.module';
       envFilePath: ['apps/api/.env', '.env'],
     }),
     PrismaModule,
+    PermissionsModule,
     ProjectsModule,
     AuthModule,
     AttachmentsModule,

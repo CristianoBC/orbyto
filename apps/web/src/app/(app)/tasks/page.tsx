@@ -6,6 +6,7 @@ import { ErrorState, LoadingState, formatDate } from '@/components/ui/page-state
 import { apiRequest } from '@/lib/api';
 import type { Priority } from '@/types/service-order';
 import type { Task, TaskStatus } from '@/types/task';
+import { useAuth } from '@/contexts/auth-context';
 
 const columns: { status: TaskStatus; label: string; hint: string }[] = [
   { status: 'PLANNED', label: 'Planejado', hint: 'Atividades previstas' },
@@ -20,6 +21,8 @@ const priorityLabels: Record<Priority, string> = {
 };
 
 export default function TasksPage() {
+  const { can, user } = useAuth();
+  const canEdit = can('TASKS', 'edit');
   const [items, setItems] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -32,14 +35,14 @@ export default function TasksPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setItems(await apiRequest<Task[]>('/tasks/my'));
+      setItems(await apiRequest<Task[]>(user?.role === 'VIEWER' ? '/tasks' : '/tasks/my'));
       setError('');
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Erro ao carregar as tarefas.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.role]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -74,7 +77,7 @@ export default function TasksPage() {
 
   return <>
     <PageHeader title="Tarefas" text="Acompanhe o fluxo das suas atividades, prioridades e prazos." />
-    <div className="alert info task-scope-notice">Este Kanban exibe somente as tarefas atribuídas a você.</div>
+    {user?.role !== 'VIEWER' && <div className="alert info task-scope-notice">Este Kanban exibe somente as tarefas atribuídas a você.</div>}
 
     <section className="kanban-toolbar" aria-label="Filtros de tarefas">
       <label className="kanban-search">
@@ -110,9 +113,9 @@ export default function TasksPage() {
                   <div><span>Responsável</span><strong>{task.assignee?.name ?? 'Não informado'}</strong></div>
                   <div><span>Prazo</span><strong>{formatDate(task.dueDate)}</strong></div>
                 </div>
-                <label className="task-status-control"><span>Status</span><select value={task.status} disabled={updatingId === task.id} onChange={(event) => void updateStatus(task, event.target.value as TaskStatus)} aria-label={`Alterar status de ${task.title}`}>
+                {canEdit && <label className="task-status-control"><span>Status</span><select value={task.status} disabled={updatingId === task.id} onChange={(event) => void updateStatus(task, event.target.value as TaskStatus)} aria-label={`Alterar status de ${task.title}`}>
                   {columns.map((option) => <option key={option.status} value={option.status}>{option.label}</option>)}
-                </select>{updatingId === task.id && <span className="spinner" aria-label="Atualizando status" />}</label>
+                </select>{updatingId === task.id && <span className="spinner" aria-label="Atualizando status" />}</label>}
               </article>)}
             </div>
           </section>;

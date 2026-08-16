@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ErrorState, labels, LoadingState } from '@/components/ui/page-state';
 import { apiRequest } from '@/lib/api';
 import type { Project } from '@/types/project';
+import { useAuth } from '@/contexts/auth-context';
 
 const dayMs = 86_400_000;
 const monthTitle = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' });
@@ -12,11 +13,12 @@ const shortDate = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'sho
 const parseDate = (value: string) => { const date = new Date(value); return new Date(date.getFullYear(), date.getMonth(), date.getDate()); };
 
 export default function SchedulePage() {
+  const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [month, setMonth] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const load = useCallback(async () => { setLoading(true); setError(''); try { setProjects(await apiRequest<Project[]>('/projects/my')); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Erro ao carregar o cronograma.'); } finally { setLoading(false); } }, []);
+  const load = useCallback(async () => { setLoading(true); setError(''); try { setProjects(await apiRequest<Project[]>(user?.role === 'VIEWER' ? '/projects' : '/projects/my')); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Erro ao carregar o cronograma.'); } finally { setLoading(false); } }, [user?.role]);
   useEffect(() => { void load(); }, [load]);
 
   const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();

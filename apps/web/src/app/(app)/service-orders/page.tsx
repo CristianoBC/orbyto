@@ -13,7 +13,8 @@ const initial: CreateServiceOrder = { title: '', description: '', category: '', 
 const administrativeRoles = ['OWNER', 'ADMIN', 'MANAGER'];
 
 export default function ServiceOrdersPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, can } = useAuth();
+  const canCreate = can('SERVICE_ORDERS', 'create');
   const [items, setItems] = useState<ServiceOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -26,7 +27,7 @@ export default function ServiceOrdersPage() {
     if (!user) return;
     setLoading(true);
     setError('');
-    const endpoint = administrativeRoles.includes(user.role) ? '/service-orders' : '/service-orders/my';
+    const endpoint = administrativeRoles.includes(user.role) || user.role === 'VIEWER' ? '/service-orders' : '/service-orders/my';
     try {
       setItems(await apiRequest<ServiceOrder[]>(endpoint));
     } catch (reason) {
@@ -57,7 +58,7 @@ export default function ServiceOrdersPage() {
   }
 
   return <>
-    <PageHeader title="Ordens de Serviço" text="Visualize e acompanhe as solicitações do ambiente." action={() => setOpen(true)} label="Nova ordem" />
+    <PageHeader title="Ordens de Serviço" text="Visualize e acompanhe as solicitações do ambiente." action={canCreate ? () => setOpen(true) : undefined} label={canCreate ? 'Nova ordem' : undefined} />
     {error && <ErrorState message={error} retry={load} />}
     {loading ? <LoadingState /> : !items.length ? <EmptyState text="Nenhuma ordem de serviço encontrada." /> : <div className="data-list">
       {items.map((item) => <Link className="data-card" href={`/service-orders/${item.id}`} key={item.id}>

@@ -38,7 +38,7 @@ function EmptyList({ text }: { text: string }) {
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [data, setData] = useState<DashboardData>(emptyData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -46,29 +46,23 @@ export default function DashboardPage() {
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
-    const requests = [
-      apiRequest<ServiceOrder[]>('/service-orders/my'),
-      apiRequest<Project[]>('/projects/my'),
-      apiRequest<Task[]>('/tasks/my'),
-      apiRequest<DailyLog[]>('/daily-logs/my'),
-    ] as const;
-    const results = await Promise.allSettled(requests);
+    const viewer = user?.role === 'VIEWER';
+    const requests: { key: keyof DashboardData; request: Promise<unknown> }[] = [];
+    if (can('SERVICE_ORDERS')) requests.push({ key: 'serviceOrders', request: apiRequest<ServiceOrder[]>(viewer ? '/service-orders' : '/service-orders/my') });
+    if (can('PROJECTS')) requests.push({ key: 'projects', request: apiRequest<Project[]>(viewer ? '/projects' : '/projects/my') });
+    if (can('TASKS')) requests.push({ key: 'tasks', request: apiRequest<Task[]>(viewer ? '/tasks' : '/tasks/my') });
+    if (can('DAILY_LOGS')) requests.push({ key: 'dailyLogs', request: apiRequest<DailyLog[]>(viewer ? '/daily-logs' : '/daily-logs/my') });
+    const results = await Promise.allSettled(requests.map((item) => item.request));
+    const next: DashboardData = { ...emptyData };
+    results.forEach((result, index) => { if (result.status === 'fulfilled') next[requests[index].key] = result.value as never; });
+    setData(next);
     const failed = results.filter((result) => result.status === 'rejected');
-
-    setData({
-      serviceOrders: results[0].status === 'fulfilled' ? results[0].value : [],
-      projects: results[1].status === 'fulfilled' ? results[1].value : [],
-      tasks: results[2].status === 'fulfilled' ? results[2].value : [],
-      dailyLogs: results[3].status === 'fulfilled' ? results[3].value : [],
-    });
-    if (failed.length) {
+    if (failed.length === results.length && results.length) {
       const firstError = failed[0].reason;
-      setError(failed.length === results.length
-        ? (firstError instanceof Error ? firstError.message : 'Não foi possível carregar o dashboard.')
-        : 'Alguns indicadores não puderam ser carregados. Os demais dados continuam disponíveis.');
+      setError(firstError instanceof Error ? firstError.message : 'Não foi possível carregar o dashboard.');
     }
     setLoading(false);
-  }, []);
+  }, [can, user?.role]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -89,10 +83,10 @@ export default function DashboardPage() {
         { label: 'Em execução', value: data.tasks.filter((item) => item.status === 'DOING').length, href: '/tasks', tone: 'blue' },
         { label: 'Tarefas concluídas', value: data.tasks.filter((item) => item.status === 'DONE').length, href: '/tasks', tone: 'green' },
         { label: 'Registros recentes', value: data.dailyLogs.filter((item) => dateValue(item.logDate) >= recentLimit).length, href: '/daily-logs', tone: 'slate', hint: 'Últimos 7 dias' },
-      ],
+      ].filter((item) => item.href === '/service-orders' ? can('SERVICE_ORDERS') : item.href === '/projects' ? can('PROJECTS') : item.href === '/tasks' ? can('TASKS') : can('DAILY_LOGS')),
       recentOrders, recentProjects, priorityTasks, recentLogs,
     };
-  }, [data]);
+  }, [can, data]);
 
   return <>
     <div className="page-heading"><div><p className="eyebrow">Orbyto · Visão operacional</p><h1>Dashboard</h1><p>Indicadores e atividades que precisam da sua atenção.</p></div><span className="date-chip">Hoje · {new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long' }).format(new Date())}</span></div>
@@ -104,16 +98,16 @@ export default function DashboardPage() {
       <section aria-labelledby="indicator-title"><div className="section-title"><h2 id="indicator-title">Indicadores operacionais</h2><p>Resumo calculado a partir dos itens vinculados a você</p></div><div className="indicator-grid">{view.indicators.map((item) => <Link className={`indicator-card ${item.tone}`} href={item.href} key={item.label}><span>{item.label}</span><strong>{item.value}</strong><small>{item.hint ?? 'Ver detalhes'} <b aria-hidden="true">→</b></small></Link>)}</div></section>
 
       <section aria-labelledby="tracking-title"><div className="section-title"><h2 id="tracking-title">Acompanhamento</h2><p>Atividades recentes e prioridades do seu dia a dia</p></div><div className="dashboard-sections">
-        <article className="dashboard-panel"><header><div><h3>Últimas ordens de serviço</h3><p>Solicitações criadas recentemente</p></div><Link href="/service-orders">Ver todas</Link></header><div className="dashboard-list">{view.recentOrders.length ? view.recentOrders.map((item) => <Link href={`/service-orders/${item.id}`} key={item.id}><div><strong>{item.title}</strong><small>{formatDate(item.createdAt)} · {labels[item.priority ?? 'MEDIUM']}</small></div><span className="badge status">{labels[item.status]}</span></Link>) : <EmptyList text="Nenhuma ordem de serviço encontrada." />}</div></article>
+        {can('SERVICE_ORDERS') && <article className="dashboard-panel"><header><div><h3>Últimas ordens de serviço</h3><p>Solicitações criadas recentemente</p></div><Link href="/service-orders">Ver todas</Link></header><div className="dashboard-list">{view.recentOrders.length ? view.recentOrders.map((item) => <Link href={`/service-orders/${item.id}`} key={item.id}><div><strong>{item.title}</strong><small>{formatDate(item.createdAt)} · {labels[item.priority ?? 'MEDIUM']}</small></div><span className="badge status">{labels[item.status]}</span></Link>) : <EmptyList text="Nenhuma ordem de serviço encontrada." />}</div></article>}
 
-        <article className="dashboard-panel"><header><div><h3>Projetos recentes</h3><p>Iniciativas acessíveis para você</p></div><Link href="/projects">Ver todos</Link></header><div className="dashboard-list">{view.recentProjects.length ? view.recentProjects.map((item) => <Link href={`/projects/${item.id}`} key={item.id}><div><strong>{item.name}</strong><small>{item.owner?.name ?? 'Sem responsável'} · {formatDate(item.createdAt)}</small></div><span className="badge status">{labels[item.status]}</span></Link>) : <EmptyList text="Nenhum projeto encontrado." />}</div></article>
+        {can('PROJECTS') && <article className="dashboard-panel"><header><div><h3>Projetos recentes</h3><p>Iniciativas acessíveis para você</p></div><Link href="/projects">Ver todos</Link></header><div className="dashboard-list">{view.recentProjects.length ? view.recentProjects.map((item) => <Link href={`/projects/${item.id}`} key={item.id}><div><strong>{item.name}</strong><small>{item.owner?.name ?? 'Sem responsável'} · {formatDate(item.createdAt)}</small></div><span className="badge status">{labels[item.status]}</span></Link>) : <EmptyList text="Nenhum projeto encontrado." />}</div></article>}
 
-        <article className="dashboard-panel"><header><div><h3>Tarefas prioritárias</h3><p>Pendências ordenadas por prioridade</p></div><Link href="/tasks">Abrir Kanban</Link></header><div className="dashboard-list">{view.priorityTasks.length ? view.priorityTasks.map((item) => <Link href="/tasks" key={item.id}><div><strong>{item.title}</strong><small>{item.project?.title ?? 'Sem projeto'} · Prazo: {formatDate(item.dueDate)}</small></div><div className="dashboard-item-badges"><span className={`badge priority-${item.priority.toLowerCase()}`}>{labels[item.priority]}</span><span className="badge status">{labels[item.status]}</span></div></Link>) : <EmptyList text="Nenhuma tarefa pendente encontrada." />}</div></article>
+        {can('TASKS') && <article className="dashboard-panel"><header><div><h3>Tarefas prioritárias</h3><p>Pendências ordenadas por prioridade</p></div><Link href="/tasks">Abrir Kanban</Link></header><div className="dashboard-list">{view.priorityTasks.length ? view.priorityTasks.map((item) => <Link href="/tasks" key={item.id}><div><strong>{item.title}</strong><small>{item.project?.title ?? 'Sem projeto'} · Prazo: {formatDate(item.dueDate)}</small></div><div className="dashboard-item-badges"><span className={`badge priority-${item.priority.toLowerCase()}`}>{labels[item.priority]}</span><span className="badge status">{labels[item.status]}</span></div></Link>) : <EmptyList text="Nenhuma tarefa pendente encontrada." />}</div></article>}
 
-        <article className="dashboard-panel"><header><div><h3>Registros diários recentes</h3><p>Últimas atualizações de trabalho</p></div><Link href="/daily-logs">Ver todos</Link></header><div className="dashboard-list">{view.recentLogs.length ? view.recentLogs.map((item) => <Link href="/daily-logs" key={item.id}><div><strong>{item.title}</strong><small>{item.project?.title ?? 'Sem projeto'} · {formatDate(item.logDate)}</small></div>{item.workedHours != null && <span className="dashboard-hours">{item.workedHours}h</span>}</Link>) : <EmptyList text="Nenhum registro diário encontrado." />}</div></article>
+        {can('DAILY_LOGS') && <article className="dashboard-panel"><header><div><h3>Registros diários recentes</h3><p>Últimas atualizações de trabalho</p></div><Link href="/daily-logs">Ver todos</Link></header><div className="dashboard-list">{view.recentLogs.length ? view.recentLogs.map((item) => <Link href="/daily-logs" key={item.id}><div><strong>{item.title}</strong><small>{item.project?.title ?? 'Sem projeto'} · {formatDate(item.logDate)}</small></div>{item.workedHours != null && <span className="dashboard-hours">{item.workedHours}h</span>}</Link>) : <EmptyList text="Nenhum registro diário encontrado." />}</div></article>}
       </div></section>
 
-      <section aria-labelledby="shortcut-title"><div className="section-title"><h2 id="shortcut-title">Atalhos rápidos</h2><p>Acesse os principais fluxos operacionais</p></div><div className="dashboard-shortcuts">{shortcuts.map((item) => <Link href={item.href} className="shortcut-card" key={item.title}><span className={`shortcut-icon ${item.color}`}>{item.icon}</span><div><h3>{item.title}</h3><p>{item.text}</p></div><b aria-hidden="true">→</b></Link>)}</div></section>
+      <section aria-labelledby="shortcut-title"><div className="section-title"><h2 id="shortcut-title">Atalhos rápidos</h2><p>Acesse os principais fluxos operacionais</p></div><div className="dashboard-shortcuts">{shortcuts.filter((item) => item.href === '/tasks' ? can('TASKS') : item.href === '/service-orders' ? can('SERVICE_ORDERS', 'create') : item.href === '/projects' ? can('PROJECTS', 'create') : can('DAILY_LOGS', 'create')).map((item) => <Link href={item.href} className="shortcut-card" key={item.title}><span className={`shortcut-icon ${item.color}`}>{item.icon}</span><div><h3>{item.title}</h3><p>{item.text}</p></div><b aria-hidden="true">→</b></Link>)}</div></section>
     </>}
   </>;
 }

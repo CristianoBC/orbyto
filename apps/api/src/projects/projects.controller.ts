@@ -8,24 +8,25 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { PermissionModule } from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
+import { RequirePermission } from '../permissions/permissions.decorator';
+import { PermissionsGuard } from '../permissions/permissions.guard';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { ListProjectsQueryDto } from './dto/list-projects-query.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { ProjectsService } from './projects.service';
 
 @Controller('projects')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.MEMBER)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermission(PermissionModule.PROJECTS)
 export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
   @Post()
+  @RequirePermission(PermissionModule.PROJECTS, 'create')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateProjectDto) {
     return this.projectsService.create(user, dto);
   }
@@ -36,8 +37,6 @@ export class ProjectsController {
   }
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
   findAll(@CurrentUser() user: AuthUser, @Query() query: ListProjectsQueryDto) {
     return this.projectsService.findAll(user.tenantId, query);
   }
@@ -48,6 +47,7 @@ export class ProjectsController {
   }
 
   @Patch(':id')
+  @RequirePermission(PermissionModule.PROJECTS, 'edit')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

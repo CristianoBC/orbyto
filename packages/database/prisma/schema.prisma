@@ -122,6 +122,18 @@ enum BillingStatus {
   CANCELED
 }
 
+enum PermissionModule {
+  DASHBOARD
+  SERVICE_ORDERS
+  PROJECTS
+  TASKS
+  KANBAN
+  DAILY_LOGS
+  SCHEDULE
+  USERS
+  REQUESTER_PORTAL
+}
+
 // ======================================================
 // TENANT / CONTA
 // ======================================================
@@ -143,6 +155,7 @@ model Tenant {
   attachments     Attachment[]
   dailyLogs       DailyLog[]
   auditLogs       AuditLog[]
+  rolePermissions RolePermission[]
 
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -552,4 +565,22 @@ model Subscription {
 
   @@index([tenantId])
   @@index([status])
+}
+
+model RolePermission {
+  id        String           @id @default(uuid())
+  tenantId  String
+  role      UserRole
+  module    PermissionModule
+  canView   Boolean          @default(false)
+  canCreate Boolean          @default(false)
+  canEdit   Boolean          @default(false)
+  canDelete Boolean          @default(false)
+  canManage Boolean          @default(false)
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([tenantId, role, module])
+  @@index([tenantId, role])
 }

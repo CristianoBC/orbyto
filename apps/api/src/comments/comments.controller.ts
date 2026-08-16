@@ -4,6 +4,9 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
+import { PermissionModule } from '@prisma/client';
+import { RequirePermission } from '../permissions/permissions.decorator';
+import { PermissionsGuard } from '../permissions/permissions.guard';
 
 @Controller('comments')
 @UseGuards(JwtAuthGuard)
@@ -16,6 +19,8 @@ export class CommentsController {
   }
 
   @Get('service-order/:serviceOrderId')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission(PermissionModule.SERVICE_ORDERS, 'view')
   findByServiceOrder(
     @CurrentUser() user: AuthUser,
     @Param('serviceOrderId') serviceOrderId: string,

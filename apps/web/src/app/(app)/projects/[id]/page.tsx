@@ -41,7 +41,7 @@ type ProjectForm = Omit<UpdateProject, "tags"> & {
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
@@ -65,12 +65,12 @@ export default function ProjectDetailPage() {
   const [projectForm, setProjectForm] = useState<ProjectForm | null>(null);
   const [projectSaving, setProjectSaving] = useState(false);
   const [projectFormError, setProjectFormError] = useState("");
-  const canEditProject =
-    !!user &&
-    !!project &&
-    (["OWNER", "ADMIN", "MANAGER"].includes(user.role) ||
-      project.owner?.id === user.id);
-  const canChangeOwner = user?.role === "OWNER" || user?.role === "ADMIN";
+  const canEditProject = can("PROJECTS", "edit") && !!project &&
+    (["OWNER", "ADMIN", "MANAGER"].includes(user?.role ?? "") || project.owner?.id === user?.id);
+  const canCreateTask = can("TASKS", "create");
+  const canEditTask = can("TASKS", "edit");
+  const canCreateDailyLog = can("DAILY_LOGS", "create");
+  const canChangeOwner = can("PROJECTS", "manage");
   const responsibleOptions =
     editing?.assignee && !users.some((item) => item.id === editing.assignee?.id)
       ? [
@@ -363,9 +363,9 @@ export default function ProjectDetailPage() {
               Editar projeto
             </button>
           )}
-          <button className="button primary" onClick={showTaskModal}>
+          {canCreateTask && <button className="button primary" onClick={showTaskModal}>
             + Nova tarefa
-          </button>
+          </button>}
         </div>
       </header>
       {notice && <div className="alert success">{notice}</div>}
@@ -428,9 +428,9 @@ export default function ProjectDetailPage() {
                 <p>
                   Crie a primeira tarefa para começar a organizar as entregas.
                 </p>
-                <button className="button ghost" onClick={showTaskModal}>
+                {canCreateTask && <button className="button ghost" onClick={showTaskModal}>
                   Criar tarefa
-                </button>
+                </button>}
               </div>
             ) : (
               <div className="project-task-list">
@@ -456,7 +456,7 @@ export default function ProjectDetailPage() {
                           : "não definido"}
                       </small>
                     </div>
-                    <div className="project-task-actions">
+                    {canEditTask && <div className="project-task-actions">
                       <button
                         className="button ghost task-edit-button"
                         onClick={() => showEditModal(task)}
@@ -482,7 +482,7 @@ export default function ProjectDetailPage() {
                           ))}
                         </select>
                       </label>
-                    </div>
+                    </div>}
                   </article>
                 ))}
               </div>
@@ -491,13 +491,13 @@ export default function ProjectDetailPage() {
           <section className="detail-card">
             <div className="section-head">
               <div><h2>Registros Diários</h2><p>Acompanhe a evolução e as horas dedicadas ao projeto.</p></div>
-              <button className="button ghost section-action" onClick={() => { setNotice(""); setDailyLogOpen(true); }}>+ Novo registro</button>
+              {canCreateDailyLog && <button className="button ghost section-action" onClick={() => { setNotice(""); setDailyLogOpen(true); }}>+ Novo registro</button>}
             </div>
             {dailyLogsError && <ErrorState message={dailyLogsError} retry={loadDailyLogs} />}
             {dailyLogsLoading ? (
               <div className="inline-loading"><span className="spinner" />Carregando registros...</div>
             ) : !dailyLogs.length ? (
-              <div className="project-tasks-empty"><span>◷</span><strong>Nenhum registro diário</strong><p>Registre a evolução deste projeto para manter o histórico atualizado.</p><button className="button ghost" onClick={() => setDailyLogOpen(true)}>Criar registro</button></div>
+              <div className="project-tasks-empty"><span>◷</span><strong>Nenhum registro diário</strong><p>Nenhum registro foi encontrado para este projeto.</p>{canCreateDailyLog && <button className="button ghost" onClick={() => setDailyLogOpen(true)}>Criar registro</button>}</div>
             ) : <DailyLogList items={dailyLogs} compact />}
           </section>
         </main>

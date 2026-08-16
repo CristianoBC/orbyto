@@ -1,0 +1,5 @@
+CREATE TYPE "PermissionModule" AS ENUM ('DASHBOARD', 'SERVICE_ORDERS', 'PROJECTS', 'TASKS', 'KANBAN', 'DAILY_LOGS', 'SCHEDULE', 'USERS', 'REQUESTER_PORTAL');
+CREATE TABLE "RolePermission" ("id" TEXT NOT NULL, "tenantId" TEXT NOT NULL, "role" "UserRole" NOT NULL, "module" "PermissionModule" NOT NULL, "canView" BOOLEAN NOT NULL DEFAULT false, "canCreate" BOOLEAN NOT NULL DEFAULT false, "canEdit" BOOLEAN NOT NULL DEFAULT false, "canDelete" BOOLEAN NOT NULL DEFAULT false, "canManage" BOOLEAN NOT NULL DEFAULT false, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL, CONSTRAINT "RolePermission_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "RolePermission_tenantId_role_module_key" ON "RolePermission"("tenantId", "role", "module");
+CREATE INDEX "RolePermission_tenantId_role_idx" ON "RolePermission"("tenantId", "role");
+ALTER TABLE "RolePermission" ADD CONSTRAINT "RolePermission_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -3,12 +3,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { apiRequest } from '@/lib/api';
 import { authStorage } from '@/lib/auth';
-import type { AuthUser, LoginResponse } from '@/types/auth';
+import { getHomeRoute, hasPermission } from '@/lib/permissions';
+import type { AuthUser, LoginResponse, PermissionModule, RolePermission } from '@/types/auth';
 
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  login(email: string, password: string): Promise<AuthUser>;
+  permissions: RolePermission[];
+  can(module: PermissionModule, action?: 'view' | 'create' | 'edit' | 'delete' | 'manage'): boolean;
+  login(email: string, password: string): Promise<string | null>;
+  homeRoute: string | null;
   logout(): void;
 }
 
@@ -17,13 +21,14 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [permissions, setPermissions] = useState<RolePermission[]>([]);
 
   useEffect(() => {
     const token = authStorage.getToken();
     if (!token) { setLoading(false); return; }
     setUser(authStorage.getUser());
-    apiRequest<{ user: AuthUser }>('/auth/me')
-      .then(({ user: current }) => { setUser(current); authStorage.save(token, current); })
+    Promise.all([apiRequest<{ user: AuthUser }>('/auth/me'), apiRequest<RolePermission[]>('/permissions/me')])
+      .then(([{ user: current }, currentPermissions]) => { setUser(current); setPermissions(currentPermissions); authStorage.save(token, current); })
       .catch(() => { authStorage.clear(); setUser(null); })
       .finally(() => setLoading(false));
   }, []);
@@ -34,11 +39,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     authStorage.save(result.accessToken, result.user);
     setUser(result.user);
-    return result.user;
+    const currentPermissions = await apiRequest<RolePermission[]>('/permissions/me');
+    setPermissions(currentPermissions);
+    return getHomeRoute(result.user.role, currentPermissions);
   }, []);
 
-  const logout = useCallback(() => { authStorage.clear(); setUser(null); window.location.assign('/login'); }, []);
-  const value = useMemo(() => ({ user, loading, login, logout }), [user, loading, login, logout]);
+  const logout = useCallback(() => { authStorage.clear(); setUser(null); setPermissions([]); window.location.assign('/login'); }, []);
+  const can = useCallback((module: PermissionModule, action: 'view' | 'create' | 'edit' | 'delete' | 'manage' = 'view') => {
+    const field = { view: 'canView', create: 'canCreate', edit: 'canEdit', delete: 'canDelete', manage: 'canManage' } as const;
+    if (user?.role === 'OWNER') return true;
+    if (action === 'view') return hasPermission(user?.role, permissions, module);
+    return Boolean(permissions.find((item) => item.module === module)?.[field[action]]);
+  }, [permissions, user?.role]);
+  const homeRoute = user ? getHomeRoute(user.role, permissions) : null;
+  const value = useMemo(() => ({ user, loading, permissions, can, login, logout, homeRoute }), [user, loading, permissions, can, login, logout, homeRoute]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

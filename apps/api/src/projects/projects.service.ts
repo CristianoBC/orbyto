@@ -123,6 +123,7 @@ export class ProjectsService {
 
     const canView =
       administrativeRoles.includes(user.role) ||
+      user.role === UserRole.VIEWER ||
       project.ownerId === user.id ||
       (await this.hasAssignedTask(user, project.id));
 

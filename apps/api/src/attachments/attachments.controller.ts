@@ -15,6 +15,9 @@ import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AttachmentsService } from './attachments.service';
+import { PermissionModule } from '@prisma/client';
+import { RequirePermission } from '../permissions/permissions.decorator';
+import { PermissionsGuard } from '../permissions/permissions.guard';
 
 const maximumFileSize = 10 * 1024 * 1024;
 const allowedExtensions = new Set([
@@ -70,6 +73,8 @@ export class AttachmentsController {
   }
 
   @Get('service-order/:serviceOrderId')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission(PermissionModule.SERVICE_ORDERS, 'view')
   findByServiceOrder(
     @CurrentUser() user: AuthUser,
     @Param('serviceOrderId') serviceOrderId: string,
@@ -78,6 +83,8 @@ export class AttachmentsController {
   }
 
   @Get(':id/download')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission(PermissionModule.SERVICE_ORDERS, 'view')
   async download(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

@@ -32,6 +32,9 @@ export class CommentsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(user: AuthUser, dto: CreateCommentDto) {
+    if (user.role === UserRole.VIEWER) {
+      throw new ForbiddenException('O perfil Visualizador não pode adicionar comentários.');
+    }
     if (dto.refType !== RefType.SERVICE_ORDER) {
       throw new BadRequestException(
         `Comentários para o tipo ${dto.refType} ainda não estão implementados.`,
@@ -98,6 +101,7 @@ export class CommentsService {
 
     const hasAccess =
       administrativeRoles.includes(user.role) ||
+      user.role === UserRole.VIEWER ||
       (user.role === UserRole.REQUESTER &&
         serviceOrder.requesterId === user.id) ||
       (user.role === UserRole.MEMBER &&

@@ -6,22 +6,23 @@ import { useAuth } from "@/contexts/auth-context";
 import Image from "next/image";
 
 export default function LoginPage() {
-  const { login, user, loading: checking } = useAuth();
+  const { login, user, homeRoute, loading: checking } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   useEffect(() => {
-    if (!checking && user) router.replace(user.role === "REQUESTER" ? "/requester/service-orders" : "/dashboard");
-  }, [checking, user, router]);
+    if (!checking && user && homeRoute) router.replace(homeRoute);
+  }, [checking, user, homeRoute, router]);
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
     setLoading(true);
     try {
-      const loggedUser = await login(email, password);
-      router.replace(loggedUser.role === "REQUESTER" ? "/requester/service-orders" : "/dashboard");
+      const destination = await login(email, password);
+      if (destination) router.replace(destination);
+      else setError("Sua conta não possui uma área liberada. Contate o administrador.");
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : "Não foi possível entrar.",

@@ -92,6 +92,16 @@ export class DailyLogsService {
     return logs.map((log) => this.toResponse(log));
   }
 
+  async findAll(tenantId: string, query: ListDailyLogsQueryDto) {
+    this.ensureQuerySupported(query);
+    const logs = await this.prisma.dailyLog.findMany({
+      where: this.buildWhere(query, { tenantId }),
+      include: dailyLogInclude,
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+    });
+    return logs.map((log) => this.toResponse(log));
+  }
+
   async findByProject(
     user: AuthUser,
     projectId: string,
@@ -131,6 +141,7 @@ export class DailyLogsService {
 
     if (
       !administrativeRoles.includes(user.role) &&
+      user.role !== UserRole.VIEWER &&
       task.project.ownerId !== user.id &&
       task.assigneeId !== user.id
     ) {
@@ -227,6 +238,7 @@ export class DailyLogsService {
   ) {
     if (
       administrativeRoles.includes(user.role) ||
+      user.role === UserRole.VIEWER ||
       project.ownerId === user.id
     ) {
       return true;
@@ -244,7 +256,7 @@ export class DailyLogsService {
   }
 
   private async canAccessLog(user: AuthUser, log: DailyLogResult) {
-    if (administrativeRoles.includes(user.role) || log.userId === user.id) {
+    if (administrativeRoles.includes(user.role) || user.role === UserRole.VIEWER || log.userId === user.id) {
       return true;
     }
     return log.project ? this.canAccessProject(user, log.project) : false;

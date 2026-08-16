@@ -56,6 +56,9 @@ export class AttachmentsService implements OnModuleInit {
     serviceOrderId: string,
     file?: Express.Multer.File,
   ) {
+    if (user.role === UserRole.VIEWER) {
+      throw new ForbiddenException('O perfil Visualizador não pode enviar anexos.');
+    }
     if (!file) {
       throw new BadRequestException('Envie um arquivo no campo file.');
     }
@@ -208,6 +211,7 @@ export class AttachmentsService implements OnModuleInit {
 
     const hasAccess =
       administrativeRoles.includes(user.role) ||
+      user.role === UserRole.VIEWER ||
       (user.role === UserRole.REQUESTER &&
         serviceOrder.requesterId === user.id) ||
       (user.role === UserRole.MEMBER &&
