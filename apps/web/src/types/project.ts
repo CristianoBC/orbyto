@@ -9,7 +9,11 @@ export interface Project {
   unit?: string | null;
   priority: Priority;
   status: ProjectStatus;
+  owner?: { id: string; name: string; email: string; avatarUrl?: string | null } | null;
+  tags?: string[];
+  taskCounts?: { tasks: number; completedTasks: number };
   createdAt: string;
+  updatedAt?: string;
 }
 
 export type CreateProject = Pick<Project, 'name' | 'description' | 'department' | 'unit' | 'priority' | 'status'>;
