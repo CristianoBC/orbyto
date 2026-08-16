@@ -8,6 +8,7 @@ import { CommentsModule } from './comments/comments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsModule } from './projects/projects.module';
 import { ServiceOrdersModule } from './service-orders/service-orders.module';
+import { TasksModule } from './tasks/tasks.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -23,6 +24,7 @@ import { UsersModule } from './users/users.module';
     CommentsModule,
     UsersModule,
     ServiceOrdersModule,
+    TasksModule,
   ],
   controllers: [AppController],
   providers: [AppService],
