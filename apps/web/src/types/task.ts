@@ -20,7 +20,11 @@ export interface CreateTask {
   description?: string;
   priority: Priority;
   status: TaskStatus;
+  assigneeId?: string;
+  dueDate?: string;
 }
+
+export type UpdateTask = Partial<Omit<CreateTask, 'projectId'>>;
 
 export interface DailyLog {
   id: string;

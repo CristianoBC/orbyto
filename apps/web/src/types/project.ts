@@ -17,3 +17,7 @@ export interface Project {
 }
 
 export type CreateProject = Pick<Project, 'name' | 'description' | 'department' | 'unit' | 'priority' | 'status'>;
+
+export type UpdateProject = Pick<Project, 'name' | 'description' | 'department' | 'unit' | 'priority' | 'status' | 'tags'> & {
+  ownerId?: string;
+};
