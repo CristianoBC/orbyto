@@ -8,8 +8,14 @@ export interface ServiceOrder {
   category?: string | null;
   system?: string | null;
   unit?: string | null;
+  channel?: string | null;
+  origin?: string | null;
+  tags?: string | null;
   priority?: Priority | null;
   status: ServiceOrderStatus;
+  dueDate?: string | null;
+  finishedAt?: string | null;
+  observation?: string | null;
   createdAt: string;
   updatedAt: string;
   requester?: ServiceOrderUser | null;
@@ -22,7 +28,7 @@ export interface ServiceOrderComment {
   author: ServiceOrderUser & { role?: string; avatarUrl?: string | null };
 }
 export interface ServiceOrderAttachment {
-  id: string; originalName: string; fileName: string; mimeType: string; size: number; createdAt: string;
+  id: string; originalName?: string | null; fileName: string; mimeType: string; size: number; createdAt: string;
   uploadedBy: ServiceOrderUser & { role?: string; avatarUrl?: string | null };
 }
 
