@@ -6,6 +6,7 @@ import { AttachmentsModule } from './attachments/attachments.module';
 import { AuthModule } from './auth/auth.module';
 import { CommentsModule } from './comments/comments.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { ProjectsModule } from './projects/projects.module';
 import { ServiceOrdersModule } from './service-orders/service-orders.module';
 import { UsersModule } from './users/users.module';
 
@@ -16,6 +17,7 @@ import { UsersModule } from './users/users.module';
       envFilePath: ['apps/api/.env', '.env'],
     }),
     PrismaModule,
+    ProjectsModule,
     AuthModule,
     AttachmentsModule,
     CommentsModule,
