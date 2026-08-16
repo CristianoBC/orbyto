@@ -18,6 +18,8 @@ export interface LoginResponse {
 
 export interface User extends AuthUser {
   phone?: string | null;
+  avatarUrl?: string | null;
   lastLoginAt?: string | null;
   createdAt: string;
+  updatedAt?: string;
 }
