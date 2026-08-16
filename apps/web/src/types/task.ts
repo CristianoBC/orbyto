@@ -25,12 +25,3 @@ export interface CreateTask {
 }
 
 export type UpdateTask = Partial<Omit<CreateTask, 'projectId'>>;
-
-export interface DailyLog {
-  id: string;
-  title: string;
-  content?: string | null;
-  logDate: string;
-  project?: { id: string; title: string } | null;
-  taskId?: string | null;
-}
