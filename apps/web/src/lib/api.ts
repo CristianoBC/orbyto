@@ -11,14 +11,15 @@ type ApiOptions = Omit<RequestInit, 'body'> & { body?: unknown; authenticated?: 
 export async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const { body, authenticated = true, headers, ...init } = options;
   const token = authStorage.getToken();
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
   const response = await fetch(`${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`, {
     ...init,
     headers: {
-      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...(body !== undefined && !isFormData ? { 'Content-Type': 'application/json' } : {}),
       ...(authenticated && token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
   });
 
   if (response.status === 401) {
@@ -32,4 +33,22 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+export async function apiDownload(path: string, fileName: string) {
+  const token = authStorage.getToken();
+  const response = await fetch(`${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (response.status === 401) {
+    authStorage.clear();
+    if (typeof window !== 'undefined') window.location.assign('/login');
+  }
+  if (!response.ok) throw new ApiError('Não foi possível baixar o anexo.', response.status);
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
