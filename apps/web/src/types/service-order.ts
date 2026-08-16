@@ -33,3 +33,6 @@ export interface ServiceOrderAttachment {
 }
 
 export type CreateServiceOrder = Pick<ServiceOrder, 'title' | 'description' | 'category' | 'system' | 'unit' | 'priority'>;
+export type UpdateServiceOrder = Partial<Pick<ServiceOrder,
+  'title' | 'description' | 'category' | 'system' | 'unit' | 'channel' | 'origin' | 'priority' | 'status' | 'observation'
+>> & { responsibleId?: string };
