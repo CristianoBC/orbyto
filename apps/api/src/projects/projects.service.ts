@@ -328,6 +328,9 @@ export class ProjectsService {
       objective: null,
       scope: null,
       department: area,
+      dueDate,
+      finishedAt,
+      // Keep the legacy aliases while clients migrate to the Prisma field names.
       endDate: dueDate,
       completedAt: finishedAt,
       tags: this.parseTags(tags),

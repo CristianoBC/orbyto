@@ -12,12 +12,17 @@ export interface Project {
   owner?: { id: string; name: string; email: string; avatarUrl?: string | null } | null;
   tags?: string[];
   taskCounts?: { tasks: number; completedTasks: number };
+  startDate?: string | null;
+  dueDate?: string | null;
+  finishedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
 
-export type CreateProject = Pick<Project, 'name' | 'description' | 'department' | 'unit' | 'priority' | 'status'>;
+export type CreateProject = Pick<Project, 'name' | 'description' | 'department' | 'unit' | 'priority' | 'status'> & { startDate?: string | null; endDate?: string | null };
 
 export type UpdateProject = Pick<Project, 'name' | 'description' | 'department' | 'unit' | 'priority' | 'status' | 'tags'> & {
   ownerId?: string;
+  startDate?: string | null;
+  endDate?: string | null;
 };

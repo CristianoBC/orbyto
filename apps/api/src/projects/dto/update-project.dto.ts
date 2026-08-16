@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform } from 'class-transformer';
 import { Priority, ProjectStatus } from '@prisma/client';
 import {
   ArrayMaxSize,
@@ -57,14 +57,18 @@ export class UpdateProjectDto {
   ownerId?: string;
 
   @IsOptional()
-  @Type(() => Date)
+  @Transform(({ value }) =>
+    value === '' || value === null ? null : new Date(value),
+  )
   @IsDate()
-  startDate?: Date;
+  startDate?: Date | null;
 
   @IsOptional()
-  @Type(() => Date)
+  @Transform(({ value }) =>
+    value === '' || value === null ? null : new Date(value),
+  )
   @IsDate()
-  endDate?: Date;
+  endDate?: Date | null;
 
   @IsOptional()
   @IsArray()

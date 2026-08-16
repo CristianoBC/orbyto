@@ -35,6 +35,8 @@ const emptyForm = (projectId: string): CreateTask => ({
 type ProjectForm = Omit<UpdateProject, "tags"> & {
   tags: string;
   ownerId: string;
+  startDate: string;
+  endDate: string;
 };
 
 export default function ProjectDetailPage() {
@@ -173,6 +175,8 @@ export default function ProjectDetailPage() {
       status: project.status,
       tags: project.tags?.join(", ") ?? "",
       ownerId: project.owner?.id ?? "",
+      startDate: project.startDate?.slice(0, 10) ?? "",
+      endDate: project.dueDate?.slice(0, 10) ?? "",
     });
     setProjectFormError("");
     setNotice("");
@@ -201,6 +205,12 @@ export default function ProjectDetailPage() {
         .split(",")
         .map((tag) => tag.trim())
         .filter(Boolean),
+      startDate: projectForm.startDate
+        ? new Date(`${projectForm.startDate}T12:00:00`).toISOString()
+        : null,
+      endDate: projectForm.endDate
+        ? new Date(`${projectForm.endDate}T12:00:00`).toISOString()
+        : null,
       ...(canChangeOwner && projectForm.ownerId
         ? { ownerId: projectForm.ownerId }
         : {}),
@@ -378,6 +388,9 @@ export default function ProjectDetailPage() {
                 value={project.owner?.name || "Não informado"}
                 detail={project.owner?.email}
               />
+              <Info label="Data de início" value={formatDate(project.startDate)} />
+              <Info label="Prazo previsto" value={formatDate(project.dueDate)} />
+              <Info label="Conclusão real" value={project.finishedAt ? formatDate(project.finishedAt) : "Ainda não concluído"} />
             </div>
             {!!project.tags?.length && (
               <div className="project-tags">
@@ -492,6 +505,8 @@ export default function ProjectDetailPage() {
           <h2>Resumo do projeto</h2>
           <Info label="Status" value={labels[project.status]} />
           <Info label="Prioridade" value={labels[project.priority]} />
+          <Info label="Período planejado" value={`${formatDate(project.startDate)} — ${formatDate(project.dueDate)}`} />
+          {project.finishedAt && <Info label="Conclusão real" value={formatDate(project.finishedAt)} />}
           <Info
             label="Tarefas"
             value={String(project.taskCounts?.tasks ?? tasks.length)}
@@ -631,6 +646,14 @@ export default function ProjectDetailPage() {
               value={projectForm.unit ?? ""}
               set={(unit) => setProjectForm({ ...projectForm, unit })}
             />
+            <label>
+              Data de início
+              <input type="date" value={projectForm.startDate} onChange={(event) => setProjectForm({ ...projectForm, startDate: event.target.value })} />
+            </label>
+            <label>
+              Prazo previsto
+              <input type="date" min={projectForm.startDate || undefined} value={projectForm.endDate} onChange={(event) => setProjectForm({ ...projectForm, endDate: event.target.value })} />
+            </label>
             <SelectPriority
               value={projectForm.priority}
               set={(priority) => setProjectForm({ ...projectForm, priority })}

@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 
 const items = [
   ['/dashboard', '▦', 'Dashboard'], ['/service-orders', '▤', 'Ordens de Serviço'],
-  ['/projects', '◇', 'Projetos'], ['/tasks', '✓', 'Tarefas'],
+  ['/projects', '◇', 'Projetos'], ['/schedule', '▥', 'Cronograma'], ['/tasks', '✓', 'Tarefas'],
   ['/daily-logs', '◷', 'Registros Diários'], ['/users', '♙', 'Usuários'],
 ] as const;
 
@@ -19,7 +19,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose(): void }) {
         <span className="brand-mark"><Image src="/orbyto-logo.png" alt="" width={48} height={48} priority /></span>
         <div><strong>Orbyto</strong><small>Plataforma de Gestão de Projetos e Ordens de Serviço</small></div>
       </Link>
-      <nav>{items.map(([href, icon, label]) => <Link key={href} href={href} onClick={onClose} className={pathname === href ? 'active' : ''}><b>{icon}</b>{label}</Link>)}</nav>
+      <nav>{items.map(([href, icon, label]) => <Link key={href} href={href} onClick={onClose} className={pathname === href || pathname.startsWith(`${href}/`) ? 'active' : ''}><b>{icon}</b>{label}</Link>)}</nav>
       <div className="sidebar-foot"><span>✦</span><div><strong>Ambiente corporativo</strong><small>Gestão conectada e eficiente</small></div></div>
     </aside>
   </>;
