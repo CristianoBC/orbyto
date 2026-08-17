@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { AuthProvider } from '@/contexts/auth-context';
 import './globals.css';
+import './audit.css';
 
 export const metadata: Metadata = {
   applicationName: 'Orbyto',

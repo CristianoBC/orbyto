@@ -14,6 +14,7 @@ import type { User } from "@/types/auth";
 import type { Project, ProjectStatus, UpdateProject } from "@/types/project";
 import type { CreateTask, Task, TaskStatus, UpdateTask } from "@/types/task";
 import type { DailyLog } from "@/types/daily-log";
+import { EntityHistory } from "@/components/audit-logs/entity-history";
 
 const statuses: TaskStatus[] = ["PLANNED", "TODO", "DOING", "DONE", "CANCELED"];
 const projectStatuses: ProjectStatus[] = [
@@ -500,6 +501,7 @@ export default function ProjectDetailPage() {
               <div className="project-tasks-empty"><span>◷</span><strong>Nenhum registro diário</strong><p>Nenhum registro foi encontrado para este projeto.</p>{canCreateDailyLog && <button className="button ghost" onClick={() => setDailyLogOpen(true)}>Criar registro</button>}</div>
             ) : <DailyLogList items={dailyLogs} compact />}
           </section>
+          <EntityHistory entity="PROJECT" entityId={id} title="Histórico do projeto" />
         </main>
         <aside className="summary-card">
           <h2>Resumo do projeto</h2>

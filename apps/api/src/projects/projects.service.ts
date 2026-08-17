@@ -65,8 +65,8 @@ export class ProjectsService {
 
     await this.validateOwner(ownerId, user.tenantId);
 
-    const project = await this.prisma.project.create({
-      data: {
+    const project = await this.prisma.$transaction(async (transaction) => {
+      const created = await transaction.project.create({ data: {
         tenantId: user.tenantId,
         ownerId,
         title: dto.name,
@@ -78,8 +78,9 @@ export class ProjectsService {
         startDate: dto.startDate,
         dueDate: dto.endDate,
         tags: this.serializeTags(dto.tags),
-      },
-      include: projectInclude,
+      }, include: projectInclude });
+      await transaction.auditLog.create({ data: { tenantId: user.tenantId, userId: user.id, action: AuditAction.CREATE, entity: 'Project', entityId: created.id, metadata: { title: created.title, status: created.status, priority: created.priority, ownerId: created.ownerId } } });
+      return created;
     });
 
     return this.toProjectResponse(project);

@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/auth-context';
 import type { PermissionModule } from '@/types/auth';
 
 const items: readonly [string, string, string, PermissionModule][] = [
+  ['/audit-logs', '◉', 'Auditoria', 'USERS'],
   ['/dashboard', '◦', 'Dashboard', 'DASHBOARD'], ['/service-orders', '◁', 'Ordens de Serviço', 'SERVICE_ORDERS'],
   ['/projects', '◇', 'Projetos', 'PROJECTS'], ['/schedule', '▥', 'Cronograma', 'SCHEDULE'], ['/tasks', '✓', 'Tarefas', 'TASKS'],
   ['/daily-logs', '▷', 'Registros Diários', 'DAILY_LOGS'], ['/users', '♙', 'Usuários', 'USERS'], ['/permissions', '⚙', 'Permissões', 'USERS'],
@@ -14,7 +15,7 @@ const items: readonly [string, string, string, PermissionModule][] = [
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose(): void }) {
   const pathname = usePathname(); const { can, user } = useAuth();
-  const visible = items.filter(([href, , , module]) => can(module) && (href !== '/permissions' || (['OWNER', 'ADMIN'].includes(user?.role ?? '') && can('USERS', 'manage'))));
+  const visible = items.filter(([href, , , module]) => can(module) && (!['/permissions', '/audit-logs'].includes(href) || ['OWNER', 'ADMIN'].includes(user?.role ?? '')) && (href !== '/permissions' || can('USERS', 'manage')));
   return <>
     {open && <button className="sidebar-overlay" aria-label="Fechar menu" onClick={onClose} />}
     <aside className={`sidebar ${open ? 'open' : ''}`}>

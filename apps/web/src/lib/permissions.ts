@@ -21,6 +21,7 @@ export function getHomeRoute(role: UserRole, permissions: RolePermission[]) {
 }
 
 export function getRequiredModule(pathname: string) {
+  if (pathname.startsWith('/audit-logs')) return 'USERS' as const;
   if (pathname.startsWith('/permissions')) return 'USERS' as const;
   return APP_ROUTES.find(({ path }) => pathname.startsWith(path))?.module;
 }

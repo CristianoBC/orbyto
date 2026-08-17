@@ -12,6 +12,7 @@ import { ServiceOrdersModule } from './service-orders/service-orders.module';
 import { TasksModule } from './tasks/tasks.module';
 import { UsersModule } from './users/users.module';
 import { PermissionsModule } from './permissions/permissions.module';
+import { AuditLogsModule } from './audit-logs/audit-logs.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { PermissionsModule } from './permissions/permissions.module';
     UsersModule,
     ServiceOrdersModule,
     TasksModule,
+    AuditLogsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -32,15 +32,16 @@ export class ServiceOrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
   create(user: AuthUser, dto: CreateServiceOrderDto) {
-    return this.prisma.serviceOrder.create({
-      data: {
+    return this.prisma.$transaction(async (transaction) => {
+      const created = await transaction.serviceOrder.create({ data: {
         ...dto,
         tenantId: user.tenantId,
         requesterId: user.id,
         status: ServiceOrderStatus.OPEN,
         priority: dto.priority ?? Priority.MEDIUM,
-      },
-      include: serviceOrderInclude,
+      }, include: serviceOrderInclude });
+      await transaction.auditLog.create({ data: { tenantId: user.tenantId, userId: user.id, action: AuditAction.CREATE, entity: 'ServiceOrder', entityId: created.id, metadata: { title: created.title, status: created.status, priority: created.priority } } });
+      return created;
     });
   }
 
