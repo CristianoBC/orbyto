@@ -134,6 +134,23 @@ enum PermissionModule {
   REQUESTER_PORTAL
 }
 
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ACTION_REQUIRED
+}
+
+enum NotificationEntity {
+  SERVICE_ORDER
+  PROJECT
+  TASK
+  DAILY_LOG
+  USER
+  PERMISSION
+  SYSTEM
+}
+
 // ======================================================
 // TENANT / CONTA
 // ======================================================
@@ -156,6 +173,7 @@ model Tenant {
   dailyLogs       DailyLog[]
   auditLogs       AuditLog[]
   rolePermissions RolePermission[]
+  notifications   Notification[]
 
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -198,6 +216,7 @@ model User {
   dailyLogs             DailyLog[]
   auditLogs             AuditLog[]
   refreshTokens          RefreshToken[]
+  notifications          Notification[]
 
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
@@ -565,6 +584,26 @@ model Subscription {
 
   @@index([tenantId])
   @@index([status])
+}
+
+model Notification {
+  id        String             @id @default(uuid())
+  tenantId  String
+  userId    String
+  title     String
+  message   String
+  type      NotificationType   @default(INFO)
+  entity    NotificationEntity
+  entityId  String?
+  readAt    DateTime?
+  createdAt DateTime           @default(now())
+
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, createdAt])
+  @@index([tenantId, userId, readAt])
+  @@index([entity, entityId])
 }
 
 model RolePermission {

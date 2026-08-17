@@ -39,6 +39,11 @@ export class ServiceOrdersController {
     return this.serviceOrdersService.findMy(user, query);
   }
 
+  @Get('my/:id')
+  findMyOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.serviceOrdersService.findMyOne(user, id);
+  }
+
   @Get()
   @UseGuards(PermissionsGuard)
   @RequirePermission(PermissionModule.SERVICE_ORDERS)

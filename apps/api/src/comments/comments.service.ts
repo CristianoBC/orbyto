@@ -4,9 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { AuditAction, Prisma, RefType, UserRole } from '@prisma/client';
+import { AuditAction, NotificationEntity, NotificationType, Prisma, RefType, UserRole } from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 
 const commentInclude = {
@@ -29,7 +30,7 @@ const administrativeRoles: UserRole[] = [
 
 @Injectable()
 export class CommentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
 
   async create(user: AuthUser, dto: CreateCommentDto) {
     if (user.role === UserRole.VIEWER) {
@@ -41,7 +42,10 @@ export class CommentsService {
       );
     }
 
-    await this.validateServiceOrderAccess(user, dto.refId, 'comentar');
+    const serviceOrder = await this.validateServiceOrderAccess(user, dto.refId, 'comentar');
+    const recipients = user.id === serviceOrder.requesterId
+      ? await this.notifications.serviceOrderStaffRecipientIds(user.tenantId, user.id)
+      : [serviceOrder.requesterId].filter((id) => id !== user.id);
 
     return this.prisma.$transaction(async (transaction) => {
       const comment = await transaction.comment.create({
@@ -66,6 +70,12 @@ export class CommentsService {
           metadata: { commentId: comment.id },
         },
       });
+
+      await this.notifications.createForUsers(recipients, {
+        tenantId: user.tenantId, title: 'Novo comentário na ordem de serviço',
+        message: `${user.name} comentou na ordem de serviço.`, type: NotificationType.INFO,
+        entity: NotificationEntity.SERVICE_ORDER, entityId: dto.refId,
+      }, transaction);
 
       return comment;
     });

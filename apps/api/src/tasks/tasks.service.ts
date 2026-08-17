@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import {
   AuditAction,
+  NotificationEntity,
+  NotificationType,
   Prisma,
   Priority,
   TaskStatus,
@@ -13,6 +15,7 @@ import {
 } from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { ListTasksQueryDto } from './dto/list-tasks-query.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
@@ -34,7 +37,7 @@ const administrativeRoles: UserRole[] = [
 
 @Injectable()
 export class TasksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
 
   async create(user: AuthUser, dto: CreateTaskDto) {
     this.ensureSupportedFields(dto);
@@ -78,6 +81,14 @@ export class TasksService {
           metadata: { projectId: project.id },
         },
       });
+
+      if (task.assigneeId && task.assigneeId !== user.id) {
+        await this.notifications.createForUser({
+          tenantId: user.tenantId, userId: task.assigneeId, title: 'Nova tarefa atribuída',
+          message: `A tarefa “${task.title}” foi atribuída a você.`, type: NotificationType.ACTION_REQUIRED,
+          entity: NotificationEntity.TASK, entityId: task.id,
+        }, transaction);
+      }
 
       return this.toTaskResponse(task);
     });
@@ -218,6 +229,17 @@ export class TasksService {
             : { updatedFields: Object.keys(dto) },
         },
       });
+
+      const recipients = new Set<string>();
+      if (dto.assigneeId && dto.assigneeId !== current.assigneeId && dto.assigneeId !== user.id) recipients.add(dto.assigneeId);
+      if (statusChanged && current.assigneeId && current.assigneeId !== user.id) recipients.add(current.assigneeId);
+      if (statusChanged && current.project.ownerId !== user.id) recipients.add(current.project.ownerId);
+      await this.notifications.createForUsers([...recipients], {
+        tenantId: user.tenantId,
+        title: dto.assigneeId && dto.assigneeId !== current.assigneeId ? 'Tarefa atribuída a você' : 'Status de tarefa alterado',
+        message: statusChanged ? `A tarefa “${current.title}” mudou para ${dto.status}.` : `A tarefa “${current.title}” foi atribuída a você.`,
+        type: NotificationType.INFO, entity: NotificationEntity.TASK, entityId: current.id,
+      }, transaction);
 
       const updated = await transaction.task.findFirst({
         where: { id: current.id, tenantId: user.tenantId },

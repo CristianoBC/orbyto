@@ -59,7 +59,7 @@ export class UpdateServiceOrderDto {
   @IsOptional()
   @Type(() => Date)
   @IsDate()
-  dueDate?: Date;
+  dueDate?: Date | null;
 
   @IsOptional()
   @IsString()

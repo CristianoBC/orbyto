@@ -5,6 +5,8 @@ import {
 } from '@nestjs/common';
 import {
   AuditAction,
+  NotificationEntity,
+  NotificationType,
   Prisma,
   Priority,
   ServiceOrderStatus,
@@ -12,6 +14,7 @@ import {
 } from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateServiceOrderDto } from './dto/create-service-order.dto';
 import { ListServiceOrdersQueryDto } from './dto/list-service-orders-query.dto';
 import { UpdateServiceOrderDto } from './dto/update-service-order.dto';
@@ -29,18 +32,56 @@ const administrativeRoles: UserRole[] = [
 
 @Injectable()
 export class ServiceOrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
-  create(user: AuthUser, dto: CreateServiceOrderDto) {
+  async create(user: AuthUser, dto: CreateServiceOrderDto) {
+    const recipients =
+      user.role === UserRole.REQUESTER
+        ? await this.notifications.serviceOrderStaffRecipientIds(
+            user.tenantId,
+            user.id,
+          )
+        : [];
     return this.prisma.$transaction(async (transaction) => {
-      const created = await transaction.serviceOrder.create({ data: {
-        ...dto,
-        tenantId: user.tenantId,
-        requesterId: user.id,
-        status: ServiceOrderStatus.OPEN,
-        priority: dto.priority ?? Priority.MEDIUM,
-      }, include: serviceOrderInclude });
-      await transaction.auditLog.create({ data: { tenantId: user.tenantId, userId: user.id, action: AuditAction.CREATE, entity: 'ServiceOrder', entityId: created.id, metadata: { title: created.title, status: created.status, priority: created.priority } } });
+      const created = await transaction.serviceOrder.create({
+        data: {
+          ...dto,
+          tenantId: user.tenantId,
+          requesterId: user.id,
+          status: ServiceOrderStatus.OPEN,
+          priority: dto.priority ?? Priority.MEDIUM,
+        },
+        include: serviceOrderInclude,
+      });
+      await transaction.auditLog.create({
+        data: {
+          tenantId: user.tenantId,
+          userId: user.id,
+          action: AuditAction.CREATE,
+          entity: 'ServiceOrder',
+          entityId: created.id,
+          metadata: {
+            title: created.title,
+            status: created.status,
+            priority: created.priority,
+          },
+        },
+      });
+      await this.notifications.createForUsers(
+        recipients,
+        {
+          tenantId: user.tenantId,
+          title: 'Nova ordem de serviço aberta',
+          message: `${user.name} abriu a ordem de serviço “${created.title}”.`,
+          type: NotificationType.ACTION_REQUIRED,
+          entity: NotificationEntity.SERVICE_ORDER,
+          entityId: created.id,
+        },
+        transaction,
+      );
       return created;
     });
   }
@@ -54,6 +95,23 @@ export class ServiceOrdersService {
       include: serviceOrderInclude,
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async findMyOne(user: AuthUser, id: string) {
+    const serviceOrder = await this.prisma.serviceOrder.findFirst({
+      where: {
+        id,
+        tenantId: user.tenantId,
+        requesterId: user.id,
+      },
+      include: serviceOrderInclude,
+    });
+
+    if (!serviceOrder) {
+      throw new NotFoundException('Ordem de serviço não encontrada.');
+    }
+
+    return serviceOrder;
   }
 
   findAll(tenantId: string, query: ListServiceOrdersQueryDto) {
@@ -148,6 +206,27 @@ export class ServiceOrdersService {
             : { updatedFields: Object.keys(dto) },
         },
       });
+
+      if (current.requesterId !== user.id) {
+        await this.notifications.createForUser(
+          {
+            tenantId: user.tenantId,
+            userId: current.requesterId,
+            title: statusChanged
+              ? 'Status da ordem de serviço alterado'
+              : 'Ordem de serviço atualizada',
+            message: statusChanged
+              ? `A ordem de serviço “${current.title}” mudou de ${current.status} para ${dto.status}.`
+              : `A ordem de serviço “${current.title}” recebeu uma atualização.`,
+            type: statusChanged
+              ? NotificationType.ACTION_REQUIRED
+              : NotificationType.INFO,
+            entity: NotificationEntity.SERVICE_ORDER,
+            entityId: current.id,
+          },
+          transaction,
+        );
+      }
 
       return updated;
     });

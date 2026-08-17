@@ -6,7 +6,7 @@ import {
   OnModuleInit,
   StreamableFile,
 } from '@nestjs/common';
-import { AuditAction, Prisma, RefType, UserRole } from '@prisma/client';
+import { AuditAction, NotificationEntity, NotificationType, Prisma, RefType, UserRole } from '@prisma/client';
 import type { Express } from 'express';
 import { createReadStream } from 'node:fs';
 import { access, mkdir, unlink, writeFile } from 'node:fs/promises';
@@ -14,6 +14,7 @@ import { basename, extname, relative, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const attachmentInclude = {
   uploadedBy: {
@@ -41,7 +42,7 @@ export class AttachmentsService implements OnModuleInit {
     'uploads',
   );
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
 
   async onModuleInit() {
     await mkdir(this.uploadsDirectory, { recursive: true });
@@ -63,7 +64,10 @@ export class AttachmentsService implements OnModuleInit {
       throw new BadRequestException('Envie um arquivo no campo file.');
     }
 
-    await this.validateServiceOrderAccess(user, serviceOrderId, 'anexar');
+    const serviceOrder = await this.validateServiceOrderAccess(user, serviceOrderId, 'anexar');
+    const recipients = user.id === serviceOrder.requesterId
+      ? await this.notifications.serviceOrderStaffRecipientIds(user.tenantId, user.id)
+      : [serviceOrder.requesterId].filter((id) => id !== user.id);
 
     const extension = AttachmentsService.getFileExtension(file.originalname);
     const fileName = `${randomUUID()}${extension}`;
@@ -114,6 +118,12 @@ export class AttachmentsService implements OnModuleInit {
             metadata: { attachmentId: attachment.id, fileName },
           },
         });
+
+        await this.notifications.createForUsers(recipients, {
+          tenantId: user.tenantId, title: 'Novo anexo na ordem de serviço',
+          message: `${user.name} adicionou o arquivo “${basename(file.originalname)}”.`,
+          type: NotificationType.INFO, entity: NotificationEntity.SERVICE_ORDER, entityId: serviceOrderId,
+        }, transaction);
 
         return attachment;
       });

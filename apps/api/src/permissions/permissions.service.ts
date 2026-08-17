@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import { AuditAction, PermissionModule, UserRole } from '@prisma/client';
+import { AuditAction, NotificationEntity, NotificationType, PermissionModule, UserRole, UserStatus } from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { actionField, defaultEnabled, permissionModules, type PermissionAction } from './permissions.constants';
@@ -37,6 +37,8 @@ export class PermissionsService {
     await this.prisma.$transaction(async (tx) => {
       for (const item of dto.permissions) await tx.rolePermission.upsert({ where: { tenantId_role_module: { tenantId: actor.tenantId, role, module: item.module } }, update: item, create: { tenantId: actor.tenantId, role, ...item } });
       await tx.auditLog.create({ data: { tenantId: actor.tenantId, userId: actor.id, action: AuditAction.UPDATE, entity: 'RolePermission', entityId: role, metadata: { role } } });
+      const administrators = await tx.user.findMany({ where: { tenantId: actor.tenantId, status: UserStatus.ACTIVE, role: { in: [UserRole.OWNER, UserRole.ADMIN] }, id: { not: actor.id } }, select: { id: true } });
+      if (administrators.length) await tx.notification.createMany({ data: administrators.map(({ id }) => ({ tenantId: actor.tenantId, userId: id, title: 'Permissões atualizadas', message: `As permissões do perfil ${role} foram alteradas por ${actor.name}.`, type: NotificationType.WARNING, entity: NotificationEntity.PERMISSION, entityId: role })) });
     });
     return this.forRole(actor.tenantId, role);
   }
