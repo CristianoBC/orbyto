@@ -23,6 +23,7 @@ const publicUserSelect = {
   avatarUrl: true,
   lastLoginAt: true,
   emailVerifiedAt: true,
+  mustChangePassword: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.UserSelect;
@@ -63,6 +64,7 @@ export class UsersService {
             role: dto.role,
             status: dto.status ?? UserStatus.ACTIVE,
             passwordHash,
+            mustChangePassword: true,
             phone: this.cleanOptional(dto.phone),
             avatarUrl: this.cleanOptional(dto.avatarUrl),
           },
@@ -139,11 +141,11 @@ export class UsersService {
     this.ensureActorCanManageTarget(actor, target.role);
     const passwordHash = await bcrypt.hash(dto.temporaryPassword, 12);
     await this.prisma.$transaction([
-      this.prisma.user.update({ where: { id: target.id }, data: { passwordHash }, select: { id: true } }),
+      this.prisma.user.update({ where: { id: target.id }, data: { passwordHash, mustChangePassword: true }, select: { id: true } }),
       this.prisma.auditLog.create({
         data: {
           tenantId: actor.tenantId, userId: actor.id, action: AuditAction.UPDATE,
-          entity: 'User', entityId: target.id, metadata: { operation: 'PASSWORD_RESET' },
+          entity: 'User', entityId: target.id, metadata: { operation: 'USER_PASSWORD_RESET' },
         },
       }),
     ]);

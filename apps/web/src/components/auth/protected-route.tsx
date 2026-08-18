@@ -14,8 +14,10 @@ export function ProtectedRoute({ children, area = 'any' }: { children: React.Rea
   const wrongArea = !!user && ((area === 'admin' && (user.role === 'REQUESTER' || (required && !can(required)) || (pathname.startsWith('/reports') && !hasReportsAccess(user.role, permissions)) || (pathname.startsWith('/permissions') && !can('USERS', 'manage')))) || (area === 'requester' && (user.role !== 'REQUESTER' || !can('REQUESTER_PORTAL'))));
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
-  }, [loading, user, router]);
+    else if (!loading && user?.mustChangePassword && pathname !== '/change-password') router.replace('/change-password');
+  }, [loading, user, router, pathname]);
   if (loading || !user) return <div className="screen-loader"><span className="spinner" />Verificando acesso...</div>;
+  if (user.mustChangePassword && pathname !== '/change-password') return <div className="screen-loader"><span className="spinner" />Redirecionando para a troca de senha...</div>;
   if (wrongArea) return <main className="access-denied-page">
     <header className="access-denied-header">
       <div className="access-denied-brand"><Image src="/orbyto-logo.png" alt="" width={44} height={44} priority /><div><strong>Orbyto</strong><small>Área segura</small></div></div>

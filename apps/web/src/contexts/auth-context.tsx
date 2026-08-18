@@ -12,6 +12,7 @@ interface AuthContextValue {
   permissions: RolePermission[];
   can(module: PermissionModule, action?: 'view' | 'create' | 'edit' | 'delete' | 'manage'): boolean;
   login(email: string, password: string): Promise<string | null>;
+  passwordChanged(): Promise<string | null>;
   homeRoute: string | null;
   logout(): void;
 }
@@ -27,8 +28,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const token = authStorage.getToken();
     if (!token) { setLoading(false); return; }
     setUser(authStorage.getUser());
-    Promise.all([apiRequest<{ user: AuthUser }>('/auth/me'), apiRequest<RolePermission[]>('/permissions/me')])
-      .then(([{ user: current }, currentPermissions]) => { setUser(current); setPermissions(currentPermissions); authStorage.save(token, current); })
+    apiRequest<{ user: AuthUser }>('/auth/me')
+      .then(async ({ user: current }) => {
+        setUser(current); authStorage.save(token, current);
+        if (!current.mustChangePassword) setPermissions(await apiRequest<RolePermission[]>('/permissions/me'));
+      })
       .catch(() => { authStorage.clear(); setUser(null); })
       .finally(() => setLoading(false));
   }, []);
@@ -39,9 +43,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     authStorage.save(result.accessToken, result.user);
     setUser(result.user);
+    if (result.user.mustChangePassword) { setPermissions([]); return '/change-password'; }
     const currentPermissions = await apiRequest<RolePermission[]>('/permissions/me');
     setPermissions(currentPermissions);
     return getHomeRoute(result.user.role, currentPermissions);
+  }, []);
+
+  const passwordChanged = useCallback(async () => {
+    const token = authStorage.getToken();
+    if (!token) return null;
+    const [{ user: current }, currentPermissions] = await Promise.all([apiRequest<{ user: AuthUser }>('/auth/me'), apiRequest<RolePermission[]>('/permissions/me')]);
+    authStorage.save(token, current); setUser(current); setPermissions(currentPermissions);
+    return getHomeRoute(current.role, currentPermissions);
   }, []);
 
   const logout = useCallback(() => { authStorage.clear(); setUser(null); setPermissions([]); window.location.assign('/login'); }, []);
@@ -51,8 +64,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (action === 'view') return hasPermission(user?.role, permissions, module);
     return Boolean(permissions.find((item) => item.module === module)?.[field[action]]);
   }, [permissions, user?.role]);
-  const homeRoute = user ? getHomeRoute(user.role, permissions) : null;
-  const value = useMemo(() => ({ user, loading, permissions, can, login, logout, homeRoute }), [user, loading, permissions, can, login, logout, homeRoute]);
+  const homeRoute = user ? (user.mustChangePassword ? '/change-password' : getHomeRoute(user.role, permissions)) : null;
+  const value = useMemo(() => ({ user, loading, permissions, can, login, passwordChanged, logout, homeRoute }), [user, loading, permissions, can, login, passwordChanged, logout, homeRoute]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

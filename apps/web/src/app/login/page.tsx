@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import Image from "next/image";
+import Link from "next/link";
 
 export default function LoginPage() {
   const { login, user, homeRoute, loading: checking } = useAuth();
@@ -115,6 +116,7 @@ export default function LoginPage() {
               "Entrar →"
             )}
           </button>
+          <div className="login-auth-links"><Link href="/forgot-password">Esqueci minha senha</Link><Link href="/register">Cadastrar-me como solicitante</Link></div>
           <small className="login-help">
             Problemas para acessar? Contate o administrador do ambiente.
           </small>

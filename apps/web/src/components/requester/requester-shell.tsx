@@ -23,7 +23,7 @@ export function RequesterShell({ children }: { children: React.ReactNode }) {
           <Link className={pathname === '/requester/service-orders/new' ? 'active' : ''} href="/requester/service-orders/new">Nova solicitação</Link>
         </nav>
         <NotificationMenu requester />
-        <div className="requester-user"><span className="avatar">{initials}</span><div><strong>{user?.name}</strong><small>{user?.email}</small></div><button className="button ghost small" onClick={logout}>Sair</button></div>
+        <div className="requester-user"><span className="avatar">{initials}</span><div><strong>{user?.name}</strong><small>{user?.email}</small></div><Link className="button ghost small" href="/change-password">Senha</Link><button className="button ghost small" onClick={logout}>Sair</button></div>
       </div>
     </header>
     <main className="requester-content">{children}</main>

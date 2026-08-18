@@ -7,4 +7,5 @@ export type AuthUser = {
   email: string;
   role: UserRole;
   status: UserStatus;
+  mustChangePassword: boolean;
 };
