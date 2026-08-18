@@ -11,6 +11,40 @@ const escapeHtml = (value: string) =>
       })[character]!,
   );
 
+export function deadlineAlertSummaryTemplate(
+  name: string | null | undefined,
+  overdue: Array<{ title: string; kind: string; dueDate: string; url: string }>,
+  upcoming: Array<{
+    title: string;
+    kind: string;
+    dueDate: string;
+    url: string;
+  }>,
+  dashboardUrl: string,
+) {
+  const greeting = name?.trim() ? `Olá, ${name.trim()}.` : 'Olá.';
+  const textList = (items: typeof overdue) =>
+    items
+      .map(
+        (item) =>
+          `- ${item.kind}: ${item.title} (prazo: ${item.dueDate})\n  ${item.url}`,
+      )
+      .join('\n');
+  const htmlList = (items: typeof overdue) =>
+    items
+      .map(
+        (item) =>
+          `<li style="margin:0 0 12px"><strong>${escapeHtml(item.kind)}:</strong> <a href="${escapeHtml(item.url)}" style="color:#6d4cff">${escapeHtml(item.title)}</a><br><span style="color:#64748b">Prazo: ${escapeHtml(item.dueDate)}</span></li>`,
+      )
+      .join('');
+  const safeDashboardUrl = escapeHtml(dashboardUrl);
+  return {
+    subject: 'Resumo diário de prazos — Orbyto',
+    text: `${greeting}\n\nItens vencidos\n${textList(overdue) || 'Nenhum.'}\n\nPróximos do prazo\n${textList(upcoming) || 'Nenhum.'}\n\nAcesse o Orbyto: ${dashboardUrl}`,
+    html: `<!doctype html><html lang="pt-BR"><body style="margin:0;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a"><table role="presentation" width="100%"><tr><td align="center" style="padding:40px 16px"><table role="presentation" width="100%" style="max-width:640px;background:#fff;border:1px solid #e5e7eb;border-radius:16px"><tr><td style="height:6px;background:linear-gradient(135deg,#6d4cff,#8b5cf6 45%,#ff6b4a);border-radius:16px 16px 0 0"></td></tr><tr><td style="padding:36px"><p style="margin:0 0 8px;color:#6d4cff;font-weight:700">ORBYTO</p><h1 style="margin:0 0 24px;font-size:24px">Itens vencidos e próximos do prazo</h1><p>${escapeHtml(greeting)}</p>${overdue.length ? `<h2 style="font-size:18px;color:#b91c1c">Vencidos (${overdue.length})</h2><ul>${htmlList(overdue)}</ul>` : ''}${upcoming.length ? `<h2 style="font-size:18px;color:#b45309">Próximos do prazo (${upcoming.length})</h2><ul>${htmlList(upcoming)}</ul>` : ''}<p style="margin:28px 0 0"><a href="${safeDashboardUrl}" style="display:inline-block;padding:14px 22px;background:#6d4cff;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Acessar o Orbyto</a></p></td></tr></table></td></tr></table></body></html>`,
+  };
+}
+
 export function operationalTemplate(
   subject: string,
   heading: string,

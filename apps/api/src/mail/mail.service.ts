@@ -5,6 +5,7 @@ import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   operationalTemplate,
+  deadlineAlertSummaryTemplate,
   passwordResetTemplate,
   userInvitationTemplate,
 } from './mail.templates';
@@ -12,6 +13,7 @@ import type {
   MailDeliveryResult,
   OperationalAuditContext,
   OperationalMailBase,
+  DeadlineAlertSummaryMail,
   PasswordResetMail,
   UserInvitationMail,
 } from './mail.types';
@@ -218,6 +220,36 @@ export class MailService {
       'Alerta de prazo de projeto',
       'deadline',
     );
+  }
+
+  async sendDeadlineAlertSummaryEmail(
+    input: DeadlineAlertSummaryMail,
+  ): Promise<MailDeliveryResult> {
+    if (!this.operationalEnabled('deadline'))
+      return { sent: false, reason: 'disabled' };
+    if (!this.transporter || !this.from)
+      return { sent: false, reason: 'not_configured' };
+    try {
+      await this.transporter.sendMail({
+        from: this.from,
+        to: input.to,
+        ...deadlineAlertSummaryTemplate(
+          input.recipientName,
+          input.overdue,
+          input.upcoming,
+          this.webUrl('/dashboard'),
+        ),
+      });
+      this.logger.log(
+        `Resumo diário de prazos enviado para ${this.maskEmail(input.to)}.`,
+      );
+      return { sent: true };
+    } catch (error: unknown) {
+      this.logger.error(
+        `Falha ao enviar resumo diário para ${this.maskEmail(input.to)}: ${error instanceof Error ? error.message : 'erro desconhecido'}`,
+      );
+      return { sent: false, reason: 'delivery_failed' };
+    }
   }
 
   formatDate(value: Date | string | null | undefined) {

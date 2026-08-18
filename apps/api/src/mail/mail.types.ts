@@ -34,3 +34,17 @@ export interface OperationalAuditContext {
   event: string;
   recipient: string;
 }
+
+export interface DeadlineAlertMailItem {
+  title: string;
+  kind: 'Ordem de serviço' | 'Projeto' | 'Tarefa';
+  dueDate: string;
+  url: string;
+}
+
+export interface DeadlineAlertSummaryMail {
+  to: string;
+  recipientName?: string | null;
+  overdue: DeadlineAlertMailItem[];
+  upcoming: DeadlineAlertMailItem[];
+}

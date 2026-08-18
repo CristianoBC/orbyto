@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
+import { DeadlineAlertsModule } from './deadline-alerts/deadline-alerts.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AttachmentsModule } from './attachments/attachments.module';
@@ -23,6 +25,7 @@ import { MailModule } from './mail/mail.module';
       isGlobal: true,
       envFilePath: ['apps/api/.env', '.env'],
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     PermissionsModule,
     ProjectsModule,
@@ -37,6 +40,7 @@ import { MailModule } from './mail/mail.module';
     NotificationsModule,
     ReportsModule,
     MailModule,
+    DeadlineAlertsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
