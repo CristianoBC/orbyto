@@ -1,5 +1,4 @@
-import { Controller, NotFoundException, Post, UseGuards } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Controller, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -12,15 +11,10 @@ import { DeadlineAlertsService } from './deadline-alerts.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.OWNER, UserRole.ADMIN)
 export class DeadlineAlertsController {
-  constructor(
-    private readonly alerts: DeadlineAlertsService,
-    private readonly config: ConfigService,
-  ) {}
+  constructor(private readonly alerts: DeadlineAlertsService) {}
 
   @Post('run')
   run(@CurrentUser() user: AuthUser) {
-    if (this.config.get<string>('NODE_ENV') !== 'development')
-      throw new NotFoundException();
     return this.alerts.run(user);
   }
 }

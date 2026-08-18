@@ -79,6 +79,11 @@ export class DeadlineAlertsService implements OnModuleInit {
 
   async run(actor?: AuthUser): Promise<DeadlineAlertsSummary> {
     const total = this.emptySummary();
+    if (actor && this.isDevelopment()) {
+      this.logger.debug(
+        `Início da rotina manual: executorId=${actor.id}, role=${actor.role}, tenantId=${actor.tenantId}.`,
+      );
+    }
     const tenants = actor
       ? [{ id: actor.tenantId }]
       : await this.prisma.tenant.findMany({
@@ -99,6 +104,16 @@ export class DeadlineAlertsService implements OnModuleInit {
           reason: message.slice(0, 500),
         });
       }
+    }
+    if (this.isDevelopment()) {
+      this.logger.debug(
+        `Fim da rotina${actor ? ' manual' : ' automática'}: tenantId=${actor?.tenantId ?? 'todos-ativos'}, ` +
+          `encontrados={osVencidas:${total.overdueServiceOrders},osProximas:${total.upcomingServiceOrders},` +
+          `projetosVencidos:${total.overdueProjects},projetosProximos:${total.upcomingProjects},` +
+          `tarefasVencidas:${total.overdueTasks},tarefasProximas:${total.upcomingTasks}}, ` +
+          `notificacoesCriadas=${total.notificationsCreated}, emailsEnviados=${total.emailsSent}, ` +
+          `emailsFalhos=${total.emailsFailed}.`,
+      );
     }
     return total;
   }
@@ -169,6 +184,12 @@ export class DeadlineAlertsService implements OnModuleInit {
       ]);
 
     const adminIds = administrators.map(({ id }) => id);
+    if (this.isDevelopment()) {
+      this.logger.debug(
+        `Itens encontrados: tenantId=${tenantId}, ordensServico=${serviceOrders.length}, ` +
+          `projetos=${projects.length}, tarefas=${tasks.length}.`,
+      );
+    }
     const items: AlertItem[] = [];
     for (const item of serviceOrders) {
       const overdue = item.dueDate! < today;
@@ -359,6 +380,12 @@ export class DeadlineAlertsService implements OnModuleInit {
       (this.config.get<string>('DEADLINE_ALERTS_ENABLED') ?? 'true')
         .trim()
         .toLowerCase(),
+    );
+  }
+
+  private isDevelopment() {
+    return (
+      (this.config.get<string>('NODE_ENV') ?? 'development') === 'development'
     );
   }
 
