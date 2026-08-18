@@ -5,6 +5,7 @@ import { AuditAction, NotificationEntity, NotificationType, TenantStatus, UserRo
 import bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import type { AuthUser } from './auth.types';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -14,7 +15,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService, private readonly jwtService: JwtService, private readonly config: ConfigService) {}
+  constructor(private readonly prisma: PrismaService, private readonly jwtService: JwtService, private readonly config: ConfigService, private readonly mail: MailService) {}
 
   async login(dto: LoginDto) {
     const email = this.normalizeEmail(dto.email);
@@ -58,7 +59,7 @@ export class AuthService {
   async forgotPassword(dto: ForgotPasswordDto) {
     const neutral = 'Se o e-mail estiver cadastrado, enviaremos instruções para recuperação.';
     const tenant = await this.getDefaultTenant();
-    const user = await this.prisma.user.findFirst({ where: { tenantId: tenant.id, email: this.normalizeEmail(dto.email), status: UserStatus.ACTIVE }, select: { id: true, tenantId: true, email: true } });
+    const user = await this.prisma.user.findFirst({ where: { tenantId: tenant.id, email: this.normalizeEmail(dto.email), status: UserStatus.ACTIVE }, select: { id: true, tenantId: true, email: true, name: true } });
     if (!user) return { message: neutral };
     const token = randomBytes(32).toString('hex');
     const tokenHash = this.hashToken(token);
@@ -67,10 +68,21 @@ export class AuthService {
       this.prisma.user.update({ where: { id: user.id }, data: { passwordResetTokenHash: tokenHash, passwordResetExpiresAt: expiresAt, passwordResetUsedAt: null } }),
       this.prisma.auditLog.create({ data: { tenantId: user.tenantId, userId: user.id, action: AuditAction.UPDATE, entity: 'User', entityId: user.id, metadata: { operation: 'PASSWORD_RESET_REQUESTED', expiresAt } } }),
     ]);
-    const resetUrl = `${this.config.get<string>('WEB_URL') ?? 'http://localhost:3000'}/reset-password?token=${token}`;
-    if ((this.config.get<string>('NODE_ENV') ?? 'development') !== 'production') {
-      console.log(`[password-reset] ${user.email}: ${resetUrl}`);
-      return { message: neutral, developmentResetUrl: resetUrl };
+    const webUrl = (this.config.get<string>('APP_WEB_URL') ?? this.config.get<string>('WEB_URL') ?? 'http://localhost:3000').replace(/\/$/, '');
+    const resetUrl = `${webUrl}/reset-password?token=${encodeURIComponent(token)}`;
+    const delivery = await this.mail.sendPasswordReset({ to: user.email, name: user.name, resetUrl, expiresInMinutes: 30 });
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: user.tenantId,
+        userId: user.id,
+        action: AuditAction.UPDATE,
+        entity: 'User',
+        entityId: user.id,
+        metadata: { operation: delivery.sent ? 'PASSWORD_RESET_EMAIL_SENT' : 'PASSWORD_RESET_EMAIL_FAILED', ...(delivery.sent ? {} : { reason: delivery.reason }) },
+      },
+    });
+    if (!delivery.sent && (this.config.get<string>('NODE_ENV') ?? 'development') !== 'production') {
+      console.warn(`[password-reset] E-mail não enviado (${delivery.reason}). Link de desenvolvimento: ${resetUrl}`);
     }
     return { message: neutral };
   }
