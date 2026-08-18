@@ -6,6 +6,7 @@ import { ErrorState, labels, LoadingState } from '@/components/ui/page-state';
 import { apiRequest } from '@/lib/api';
 import type { Project } from '@/types/project';
 import { useAuth } from '@/contexts/auth-context';
+import { projectDeadline } from '@/lib/deadline';
 
 const dayMs = 86_400_000;
 const monthTitle = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' });
@@ -51,7 +52,7 @@ export default function SchedulePage() {
               const clippedStart = start < month ? month : start; const clippedEnd = end > monthEnd ? monthEnd : end;
               const startDay = Math.round((clippedStart.getTime() - month.getTime()) / dayMs) + 1;
               const span = Math.round((clippedEnd.getTime() - clippedStart.getTime()) / dayMs) + 1;
-              return <div className="schedule-row" key={project.id}>
+              return <div className={`schedule-row deadline-${projectDeadline(project).status}`} key={project.id}>
                 <Link className="schedule-project" href={`/projects/${project.id}`}><strong>{project.name}</strong><span>{shortDate.format(start)} — {shortDate.format(end)}</span></Link>
                 <div className="schedule-track">{Array.from({ length: days }, (_, index) => <i className={todayDay === index + 1 ? 'today' : ''} key={index} />)}<Link href={`/projects/${project.id}`} className={`schedule-bar status-${project.status.toLowerCase()} priority-${project.priority.toLowerCase()}`} style={{ gridColumn: `${startDay} / span ${span}` }} title={`${project.name}: ${shortDate.format(start)} a ${shortDate.format(end)}`}><span>{project.name}</span><b>{labels[project.status]}</b></Link></div>
               </div>;

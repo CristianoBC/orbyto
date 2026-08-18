@@ -8,6 +8,7 @@ import { Modal } from "@/components/ui/modal";
 import { Field, FormActions, SelectPriority } from "@/components/ui/forms";
 import { labels } from "@/components/ui/page-state";
 import { ApiError, apiDownload, apiRequest } from "@/lib/api";
+import { serviceOrderDeadline } from "@/lib/deadline";
 import type { User } from "@/types/auth";
 import type {
   Priority,
@@ -478,6 +479,7 @@ export default function ServiceOrderDetailPage() {
               subvalue={order.responsible?.email}
             />
             <Info label={isOverdue(order) ? "Prazo vencido" : "Prazo"} value={dateTime(order.dueDate)} />
+            <Info label="Situação do prazo" value={serviceOrderDeadline(order).label} badge />
             <Info label="Conclusão" value={dateTime(order.finishedAt)} />
             <Info label="Criada em" value={dateTime(order.createdAt)} />
             <Info label="Atualizada em" value={dateTime(order.updatedAt)} />

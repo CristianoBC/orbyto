@@ -7,6 +7,7 @@ import { apiRequest } from '@/lib/api';
 import type { Priority } from '@/types/service-order';
 import type { Task, TaskStatus } from '@/types/task';
 import { useAuth } from '@/contexts/auth-context';
+import { taskDeadline } from '@/lib/deadline';
 
 const columns: { status: TaskStatus; label: string; hint: string }[] = [
   { status: 'PLANNED', label: 'Planejado', hint: 'Atividades previstas' },
@@ -105,8 +106,8 @@ export default function TasksPage() {
           return <section className={`kanban-column status-${column.status.toLowerCase()}`} key={column.status} aria-labelledby={`column-${column.status}`}>
             <header><div><span className="kanban-dot" /><div><h2 id={`column-${column.status}`}>{column.label}</h2><p>{column.hint}</p></div></div><strong>{columnItems.length}</strong></header>
             <div className="kanban-cards">
-              {columnItems.length === 0 ? <div className="kanban-column-empty">Nenhuma tarefa nesta etapa</div> : columnItems.map((task) => <article className="task-card" key={task.id}>
-                <div className="task-card-top"><span className={`badge priority-${task.priority.toLowerCase()}`}>{priorityLabels[task.priority]}</span>{task.project && <span className="task-project" title={task.project.title}>{task.project.title}</span>}</div>
+              {columnItems.length === 0 ? <div className="kanban-column-empty">Nenhuma tarefa nesta etapa</div> : columnItems.map((task) => <article className={`task-card${taskDeadline(task).status === 'overdue' ? ' deadline-card-overdue' : ''}`} key={task.id}>
+                <div className="task-card-top"><span className={`badge priority-${task.priority.toLowerCase()}`}>{priorityLabels[task.priority]}</span><span className={`badge deadline-${taskDeadline(task).status}`}>{taskDeadline(task).label}</span>{task.project && <span className="task-project" title={task.project.title}>{task.project.title}</span>}</div>
                 <h3>{task.title}</h3>
                 <p className="task-description">{task.description?.trim() || 'Sem descrição informada.'}</p>
                 <div className="task-meta">

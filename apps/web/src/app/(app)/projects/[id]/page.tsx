@@ -10,6 +10,7 @@ import { DailyLogModal } from "@/components/daily-logs/daily-log-modal";
 import { ErrorState, formatDate, labels } from "@/components/ui/page-state";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest } from "@/lib/api";
+import { projectDeadline, taskDeadline } from "@/lib/deadline";
 import type { User } from "@/types/auth";
 import type { Project, ProjectStatus, UpdateProject } from "@/types/project";
 import type { CreateTask, Task, TaskStatus, UpdateTask } from "@/types/task";
@@ -390,6 +391,7 @@ export default function ProjectDetailPage() {
               />
               <Info label="Data de início" value={formatDate(project.startDate)} />
               <Info label="Prazo previsto" value={formatDate(project.dueDate)} />
+              <Info label="Situação do prazo" value={projectDeadline(project).label} />
               <Info label="Conclusão real" value={project.finishedAt ? formatDate(project.finishedAt) : "Ainda não concluído"} />
             </div>
             {!!project.tags?.length && (
@@ -450,7 +452,7 @@ export default function ProjectDetailPage() {
                         {task.assignee?.name
                           ? `Responsável: ${task.assignee.name}`
                           : "Sem responsável"}{" "}
-                        · Prazo:{" "}
+                        · Prazo: {taskDeadline(task).label} ·{" "}
                         {task.dueDate
                           ? formatDate(task.dueDate)
                           : "não definido"}

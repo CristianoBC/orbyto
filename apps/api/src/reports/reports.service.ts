@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
+import { getDeadlineInfo } from '../common/deadline';
 import {
   DailyLogReportQueryDto,
   ProjectReportQueryDto,
@@ -20,11 +21,11 @@ const fullTenantRoles: UserRole[] = [
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  serviceOrders(user: AuthUser, query: ServiceOrderReportQueryDto) {
+  async serviceOrders(user: AuthUser, query: ServiceOrderReportQueryDto) {
     const access: Prisma.ServiceOrderWhereInput = fullTenantRoles.includes(user.role)
       ? {}
       : { OR: [{ requesterId: user.id }, { responsibleId: user.id }] };
-    return this.prisma.serviceOrder.findMany({
+    const items = await this.prisma.serviceOrder.findMany({
       where: {
         AND: [
           { tenantId: user.tenantId }, access,
@@ -48,13 +49,14 @@ export class ReportsService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    return items.map((item) => ({ ...item, ...getDeadlineInfo(item.dueDate, item.status, ['COMPLETED', 'CANCELED'], 3) }));
   }
 
-  projects(user: AuthUser, query: ProjectReportQueryDto) {
+  async projects(user: AuthUser, query: ProjectReportQueryDto) {
     const access: Prisma.ProjectWhereInput = fullTenantRoles.includes(user.role)
       ? {}
       : { OR: [{ ownerId: user.id }, { tasks: { some: { tenantId: user.tenantId, assigneeId: user.id } } }] };
-    return this.prisma.project.findMany({
+    const items = await this.prisma.project.findMany({
       where: {
         AND: [
           { tenantId: user.tenantId }, access,
@@ -72,13 +74,14 @@ export class ReportsService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    return items.map((item) => ({ ...item, ...getDeadlineInfo(item.dueDate, item.finishedAt ? 'COMPLETED' : item.status, ['COMPLETED', 'CANCELED'], 7) }));
   }
 
-  tasks(user: AuthUser, query: TaskReportQueryDto) {
+  async tasks(user: AuthUser, query: TaskReportQueryDto) {
     const access: Prisma.TaskWhereInput = fullTenantRoles.includes(user.role)
       ? {}
       : { OR: [{ assigneeId: user.id }, { project: { ownerId: user.id, tenantId: user.tenantId } }] };
-    return this.prisma.task.findMany({
+    const items = await this.prisma.task.findMany({
       where: {
         AND: [
           { tenantId: user.tenantId }, access,
@@ -97,6 +100,7 @@ export class ReportsService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    return items.map((item) => ({ ...item, ...getDeadlineInfo(item.dueDate, item.status, ['DONE', 'CANCELED'], 3) }));
   }
 
   dailyLogs(user: AuthUser, query: DailyLogReportQueryDto) {

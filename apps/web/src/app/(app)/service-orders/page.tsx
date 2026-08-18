@@ -13,6 +13,7 @@ import {
   LoadingState,
 } from "@/components/ui/page-state";
 import { Modal } from "@/components/ui/modal";
+import { serviceOrderDeadline } from "@/lib/deadline";
 import {
   Field,
   FormActions,
@@ -30,10 +31,6 @@ const initial: CreateServiceOrder = {
   dueDate: "",
 };
 const administrativeRoles = ["OWNER", "ADMIN", "MANAGER"];
-const closedStatuses = ["COMPLETED", "CANCELED"];
-const today = () => new Intl.DateTimeFormat("en-CA").format(new Date());
-const isOverdue = (item: ServiceOrder) =>
-  Boolean(item.dueDate && !closedStatuses.includes(item.status) && item.dueDate.slice(0, 10) < today());
 
 export default function ServiceOrdersPage() {
   const { user, loading: authLoading, can } = useAuth();
@@ -111,7 +108,7 @@ export default function ServiceOrdersPage() {
         <div className="data-list">
           {items.map((item) => (
             <Link
-              className={`data-card${isOverdue(item) ? " service-order-overdue" : ""}`}
+              className={`data-card${serviceOrderDeadline(item).status === "overdue" ? " service-order-overdue" : ""}`}
               href={`/service-orders/${item.id}`}
               key={item.id}
             >
@@ -136,12 +133,12 @@ export default function ServiceOrdersPage() {
                     </small>
                   </div>
                   <div>
-                    <small className={isOverdue(item) ? "overdue-text" : ""}>
+                    <small className={serviceOrderDeadline(item).status === "overdue" ? "overdue-text" : ""}>
                       Prazo:{" "}
                       {item.dueDate
                         ? formatDate(item.dueDate)
                         : "não informado"}
-                      {isOverdue(item) ? " · vencido" : ""}
+                      {serviceOrderDeadline(item).status === "overdue" ? " · vencida" : ""}
                     </small>
                   </div>
                 </div>
@@ -153,6 +150,7 @@ export default function ServiceOrdersPage() {
                   {labels[item.priority ?? "MEDIUM"]}
                 </span>
                 <span className="badge status">{labels[item.status]}</span>
+                <span className={`badge deadline-${serviceOrderDeadline(item).status}`}>{serviceOrderDeadline(item).label}</span>
               </div>
             </Link>
           ))}

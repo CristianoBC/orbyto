@@ -9,6 +9,7 @@ import type { DailyLog } from '@/types/daily-log';
 import type { Project } from '@/types/project';
 import type { ServiceOrder } from '@/types/service-order';
 import type { Task } from '@/types/task';
+import { projectDeadline, serviceOrderDeadline, taskDeadline } from '@/lib/deadline';
 
 type DashboardData = {
   serviceOrders: ServiceOrder[];
@@ -77,11 +78,12 @@ export default function DashboardPage() {
     const recentLogs = [...data.dailyLogs].sort((a, b) => dateValue(b.logDate) - dateValue(a.logDate) || dateValue(b.createdAt) - dateValue(a.createdAt)).slice(0, 4);
     return {
       indicators: [
-        { label: 'Ordens abertas', value: data.serviceOrders.filter((item) => !['COMPLETED', 'CANCELED'].includes(item.status)).length, href: '/service-orders', tone: 'coral' },
-        { label: 'Projetos ativos', value: data.projects.filter((item) => item.status === 'IN_PROGRESS').length, href: '/projects', tone: 'violet' },
-        { label: 'Tarefas pendentes', value: data.tasks.filter((item) => ['PLANNED', 'TODO'].includes(item.status)).length, href: '/tasks', tone: 'amber' },
-        { label: 'Em execução', value: data.tasks.filter((item) => item.status === 'DOING').length, href: '/tasks', tone: 'blue' },
-        { label: 'Tarefas concluídas', value: data.tasks.filter((item) => item.status === 'DONE').length, href: '/tasks', tone: 'green' },
+        { label: 'OS vencidas', value: data.serviceOrders.filter((item) => serviceOrderDeadline(item).status === 'overdue').length, href: '/service-orders', tone: 'coral', hint: 'Atenção necessária' },
+        { label: 'OS próximas do prazo', value: data.serviceOrders.filter((item) => serviceOrderDeadline(item).status === 'dueSoon').length, href: '/service-orders', tone: 'amber', hint: 'Próximos 3 dias' },
+        { label: 'Projetos atrasados', value: data.projects.filter((item) => projectDeadline(item).status === 'overdue').length, href: '/projects', tone: 'coral', hint: 'Prazo ultrapassado' },
+        { label: 'Projetos próximos', value: data.projects.filter((item) => projectDeadline(item).status === 'dueSoon').length, href: '/projects', tone: 'violet', hint: 'Próximos 7 dias' },
+        { label: 'Tarefas vencidas', value: data.tasks.filter((item) => taskDeadline(item).status === 'overdue').length, href: '/tasks', tone: 'coral', hint: 'Atenção necessária' },
+        { label: 'Tarefas próximas', value: data.tasks.filter((item) => taskDeadline(item).status === 'dueSoon').length, href: '/tasks', tone: 'blue', hint: 'Próximos 3 dias' },
         { label: 'Registros recentes', value: data.dailyLogs.filter((item) => dateValue(item.logDate) >= recentLimit).length, href: '/daily-logs', tone: 'slate', hint: 'Últimos 7 dias' },
       ].filter((item) => item.href === '/service-orders' ? can('SERVICE_ORDERS') : item.href === '/projects' ? can('PROJECTS') : item.href === '/tasks' ? can('TASKS') : can('DAILY_LOGS')),
       recentOrders, recentProjects, priorityTasks, recentLogs,

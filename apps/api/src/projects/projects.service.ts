@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import {
   AuditAction,
+  NotificationEntity,
+  NotificationType,
   Prisma,
   Priority,
   ProjectStatus,
@@ -14,6 +16,8 @@ import {
 } from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { getDeadlineInfo } from '../common/deadline';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { ListProjectsQueryDto } from './dto/list-projects-query.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
@@ -51,7 +55,7 @@ const administrativeRoles: UserRole[] = [
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
 
   async create(user: AuthUser, dto: CreateProjectDto) {
     this.ensureSupportedFields(dto);
@@ -80,6 +84,14 @@ export class ProjectsService {
         tags: this.serializeTags(dto.tags),
       }, include: projectInclude });
       await transaction.auditLog.create({ data: { tenantId: user.tenantId, userId: user.id, action: AuditAction.CREATE, entity: 'Project', entityId: created.id, metadata: { title: created.title, status: created.status, priority: created.priority, ownerId: created.ownerId } } });
+      const deadline = getDeadlineInfo(created.dueDate, created.status, ['COMPLETED', 'CANCELED'], 7);
+      if (deadline.deadlineStatus === 'overdue' || deadline.deadlineStatus === 'dueSoon') {
+        await this.notifications.createForUsers([...new Set([user.id, created.ownerId])], {
+          tenantId: user.tenantId, title: deadline.deadlineStatus === 'overdue' ? 'Projeto salvo com prazo vencido' : 'Projeto próximo do prazo',
+          message: `O projeto “${created.title}” requer atenção ao prazo.`, type: NotificationType.WARNING,
+          entity: NotificationEntity.PROJECT, entityId: created.id,
+        }, transaction);
+      }
       return created;
     });
 
@@ -155,6 +167,8 @@ export class ProjectsService {
         ownerId: true,
         status: true,
         finishedAt: true,
+        dueDate: true,
+        title: true,
       },
     });
 
@@ -223,6 +237,17 @@ export class ProjectsService {
             : { updatedFields: Object.keys(dto) },
         },
       });
+
+      const effectiveDueDate = dto.endDate === undefined ? current.dueDate : dto.endDate;
+      const effectiveStatus = dto.status ?? current.status;
+      const deadline = getDeadlineInfo(effectiveDueDate, effectiveStatus, ['COMPLETED', 'CANCELED'], 7);
+      if (dto.endDate !== undefined && (deadline.deadlineStatus === 'overdue' || deadline.deadlineStatus === 'dueSoon')) {
+        await this.notifications.createForUsers([...new Set([user.id, dto.ownerId ?? current.ownerId])], {
+          tenantId: user.tenantId, title: deadline.deadlineStatus === 'overdue' ? 'Prazo vencido no projeto' : 'Projeto próximo do prazo',
+          message: `O prazo do projeto “${current.title}” requer atenção.`, type: NotificationType.WARNING,
+          entity: NotificationEntity.PROJECT, entityId: current.id,
+        }, transaction);
+      }
 
       const updated = await transaction.project.findFirst({
         where: { id: current.id, tenantId: user.tenantId },

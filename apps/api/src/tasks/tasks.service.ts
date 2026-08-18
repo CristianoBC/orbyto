@@ -16,6 +16,7 @@ import {
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { getDeadlineInfo } from '../common/deadline';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { ListTasksQueryDto } from './dto/list-tasks-query.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
@@ -86,6 +87,15 @@ export class TasksService {
         await this.notifications.createForUser({
           tenantId: user.tenantId, userId: task.assigneeId, title: 'Nova tarefa atribuída',
           message: `A tarefa “${task.title}” foi atribuída a você.`, type: NotificationType.ACTION_REQUIRED,
+          entity: NotificationEntity.TASK, entityId: task.id,
+        }, transaction);
+      }
+
+      const deadline = getDeadlineInfo(task.dueDate, task.status, ['DONE', 'CANCELED'], 3);
+      if (deadline.deadlineStatus === 'overdue' || deadline.deadlineStatus === 'dueSoon') {
+        await this.notifications.createForUsers([...new Set([user.id, project.ownerId, ...(task.assigneeId ? [task.assigneeId] : [])])], {
+          tenantId: user.tenantId, title: deadline.deadlineStatus === 'overdue' ? 'Tarefa salva com prazo vencido' : 'Tarefa próxima do prazo',
+          message: `A tarefa “${task.title}” requer atenção ao prazo.`, type: NotificationType.WARNING,
           entity: NotificationEntity.TASK, entityId: task.id,
         }, transaction);
       }
@@ -240,6 +250,17 @@ export class TasksService {
         message: statusChanged ? `A tarefa “${current.title}” mudou para ${dto.status}.` : `A tarefa “${current.title}” foi atribuída a você.`,
         type: NotificationType.INFO, entity: NotificationEntity.TASK, entityId: current.id,
       }, transaction);
+
+      const effectiveDueDate = dto.dueDate === undefined ? current.dueDate : dto.dueDate;
+      const effectiveStatus = dto.status ?? current.status;
+      const deadline = getDeadlineInfo(effectiveDueDate, effectiveStatus, ['DONE', 'CANCELED'], 3);
+      if (dto.dueDate !== undefined && (deadline.deadlineStatus === 'overdue' || deadline.deadlineStatus === 'dueSoon')) {
+        await this.notifications.createForUsers([...new Set([user.id, current.project.ownerId, ...(dto.assigneeId ?? current.assigneeId ? [dto.assigneeId ?? current.assigneeId!] : [])])], {
+          tenantId: user.tenantId, title: deadline.deadlineStatus === 'overdue' ? 'Prazo vencido na tarefa' : 'Tarefa próxima do prazo',
+          message: `O prazo da tarefa “${current.title}” requer atenção.`, type: NotificationType.WARNING,
+          entity: NotificationEntity.TASK, entityId: current.id,
+        }, transaction);
+      }
 
       const updated = await transaction.task.findFirst({
         where: { id: current.id, tenantId: user.tenantId },

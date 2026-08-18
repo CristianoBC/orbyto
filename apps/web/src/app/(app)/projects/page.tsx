@@ -8,6 +8,7 @@ import { EmptyState, ErrorState, formatDate, labels, LoadingState } from '@/comp
 import { Modal } from '@/components/ui/modal';
 import { Field, FormActions, PageHeader, SelectPriority } from '@/components/ui/forms';
 import { useAuth } from '@/contexts/auth-context';
+import { projectDeadline } from '@/lib/deadline';
 
 const initial: CreateProject = { name: '', description: '', department: '', unit: '', priority: 'MEDIUM', status: 'PLANNED', startDate: '', endDate: '' };
 const statuses: ProjectStatus[] = ['PLANNED', 'IN_PROGRESS', 'PAUSED', 'COMPLETED', 'CANCELED'];
@@ -39,9 +40,9 @@ export default function ProjectsPage() {
     <PageHeader title="Projetos" text="Organize iniciativas, responsáveis e entregas." action={canCreate ? () => setOpen(true) : undefined} label={canCreate ? 'Novo projeto' : undefined} />
     {error && <ErrorState message={error} retry={load} />}
     {loading ? <LoadingState /> : !items.length ? <EmptyState text="Crie seu primeiro projeto para organizar as entregas." /> : <div className="data-list">{items.map((item) =>
-      <Link className="data-card project-card-link" href={`/projects/${item.id}`} key={item.id} aria-label={`Abrir projeto ${item.name}`}>
+      <Link className={`data-card project-card-link${projectDeadline(item).status === 'overdue' ? ' deadline-card-overdue' : ''}`} href={`/projects/${item.id}`} key={item.id} aria-label={`Abrir projeto ${item.name}`}>
         <div className="data-main"><span className="item-icon violet">◇</span><div><h3>{item.name}</h3><p>{item.description || 'Projeto sem descrição.'}</p><small>{item.department || 'Sem departamento'} · {item.unit || 'Unidade não informada'} · Prazo: {item.dueDate ? formatDate(item.dueDate) : 'sem prazo definido'}</small></div></div>
-        <div className="project-card-end"><div className="badges"><span className={`badge priority-${item.priority.toLowerCase()}`}>{labels[item.priority]}</span><span className="badge status">{labels[item.status]}</span></div><span className="card-arrow" aria-hidden="true">→</span></div>
+        <div className="project-card-end"><div className="badges"><span className={`badge priority-${item.priority.toLowerCase()}`}>{labels[item.priority]}</span><span className="badge status">{labels[item.status]}</span><span className={`badge deadline-${projectDeadline(item).status}`}>{projectDeadline(item).label}</span></div><span className="card-arrow" aria-hidden="true">→</span></div>
       </Link>)}</div>}
     {open && <Modal title="Novo projeto" onClose={() => setOpen(false)}><form className="form-grid" onSubmit={submit}>
       {formError && <div className="alert error span-2">{formError}</div>}

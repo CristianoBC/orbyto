@@ -10,12 +10,9 @@ import {
   LoadingState,
 } from "@/components/ui/page-state";
 import { apiRequest } from "@/lib/api";
+import { serviceOrderDeadline } from "@/lib/deadline";
 import type { ServiceOrder } from "@/types/service-order";
 
-const closedStatuses = ["COMPLETED", "CANCELED"];
-const today = () => new Intl.DateTimeFormat("en-CA").format(new Date());
-const isOverdue = (item: ServiceOrder) =>
-  Boolean(item.dueDate && !closedStatuses.includes(item.status) && item.dueDate.slice(0, 10) < today());
 
 export default function RequesterServiceOrdersPage() {
   const [items, setItems] = useState<ServiceOrder[]>([]);
@@ -62,13 +59,14 @@ export default function RequesterServiceOrdersPage() {
           {items.map((item) => (
             <Link
               href={`/requester/service-orders/${item.id}`}
-              className={`requester-order-card${isOverdue(item) ? " service-order-overdue" : ""}`}
+              className={`requester-order-card${serviceOrderDeadline(item).status === "overdue" ? " service-order-overdue" : ""}`}
               key={item.id}
             >
               <div>
                 <div className="requester-order-title">
                   <h2>{item.title}</h2>
                   <span className="badge status">{labels[item.status]}</span>
+                  <span className={`badge deadline-${serviceOrderDeadline(item).status}`}>{serviceOrderDeadline(item).label}</span>
                 </div>
                 <p>{item.description}</p>
                 <small>
@@ -76,10 +74,10 @@ export default function RequesterServiceOrdersPage() {
                   {item.category || "Sem categoria"} ·{" "}
                   {item.system || "Sistema não informado"}
                 </small>
-                <small className={isOverdue(item) ? "overdue-text" : ""}>
+                <small className={serviceOrderDeadline(item).status === "overdue" ? "overdue-text" : ""}>
                   Prazo:{" "}
                   {item.dueDate ? formatDate(item.dueDate) : "não informado"}
-                  {isOverdue(item) ? " · vencido" : ""}
+                  {serviceOrderDeadline(item).status === "overdue" ? " · vencida" : ""}
                 </small>
               </div>
               <span

@@ -13,6 +13,7 @@ type Column = { label: string; value(row: Row): string | number | null | undefin
 const emptyFilters: Filters = { dateFrom: '', dateTo: '', status: '', priority: '', projectId: '', requesterId: '', responsibleId: '', assigneeId: '', unit: '', category: '' };
 const date = (value: string | null | undefined) => value ? new Intl.DateTimeFormat('pt-BR').format(new Date(value)) : '—';
 const labels: Record<string, string> = { OPEN: 'Aberta', IN_REVIEW: 'Em análise', IN_PROGRESS: 'Em andamento', WAITING_REQUESTER: 'Aguardando solicitante', COMPLETED: 'Concluído', CANCELED: 'Cancelado', PLANNED: 'Planejado', PAUSED: 'Pausado', TODO: 'A fazer', DOING: 'Em execução', DONE: 'Concluída', PENDING: 'Pendente', WAITING_RETURN: 'Aguardando retorno', LOW: 'Baixa', MEDIUM: 'Média', HIGH: 'Alta', CRITICAL: 'Crítica' };
+const deadlineLabels: Record<string, string> = { overdue: 'Vencida', dueSoon: 'Próxima do prazo', onTrack: 'No prazo', noDueDate: 'Sem prazo' };
 const reportConfig: Record<ReportKey, { label: string; module: PermissionModule; file: string }> = {
   'service-orders': { label: 'Ordens de Serviço', module: 'SERVICE_ORDERS', file: 'relatorio-ordens-servico.csv' },
   projects: { label: 'Projetos', module: 'PROJECTS', file: 'relatorio-projetos.csv' },
@@ -27,6 +28,7 @@ function columnsFor(report: ReportKey): Column[] {
     { label: 'Status', value: (r) => labels[(r as ServiceOrderReportRow).status] }, { label: 'Prioridade', value: (r) => labels[(r as ServiceOrderReportRow).priority ?? ''] ?? '—' },
     { label: 'Categoria', value: (r) => (r as ServiceOrderReportRow).category ?? '—' }, { label: 'Sistema', value: (r) => (r as ServiceOrderReportRow).system ?? '—' },
     { label: 'Unidade', value: (r) => (r as ServiceOrderReportRow).unit ?? '—' }, { label: 'Prazo', value: (r) => date((r as ServiceOrderReportRow).dueDate) },
+    { label: 'Situação do prazo', value: (r) => deadlineLabels[(r as ServiceOrderReportRow).deadlineStatus] },
     { label: 'Criação', value: (r) => date((r as ServiceOrderReportRow).createdAt) }, { label: 'Atualização', value: (r) => date((r as ServiceOrderReportRow).updatedAt) },
     { label: 'Conclusão', value: (r) => date((r as ServiceOrderReportRow).finishedAt) },
   ];
@@ -35,12 +37,14 @@ function columnsFor(report: ReportKey): Column[] {
     { label: 'Status', value: (r) => labels[(r as ProjectReportRow).status] }, { label: 'Prioridade', value: (r) => labels[(r as ProjectReportRow).priority] },
     { label: 'Departamento', value: (r) => (r as ProjectReportRow).area ?? '—' }, { label: 'Unidade', value: (r) => (r as ProjectReportRow).unit ?? '—' },
     { label: 'Início previsto', value: (r) => date((r as ProjectReportRow).startDate) }, { label: 'Prazo previsto', value: (r) => date((r as ProjectReportRow).dueDate) },
+    { label: 'Situação do prazo', value: (r) => deadlineLabels[(r as ProjectReportRow).deadlineStatus] },
     { label: 'Conclusão real', value: (r) => date((r as ProjectReportRow).finishedAt) }, { label: 'Criação', value: (r) => date((r as ProjectReportRow).createdAt) },
   ];
   if (report === 'tasks') return [
     { label: 'Título', value: (r) => (r as TaskReportRow).title }, { label: 'Projeto', value: (r) => (r as TaskReportRow).project.title },
     { label: 'Responsável', value: (r) => (r as TaskReportRow).assignee?.name ?? '—' }, { label: 'Status', value: (r) => labels[(r as TaskReportRow).status] },
     { label: 'Prioridade', value: (r) => labels[(r as TaskReportRow).priority] }, { label: 'Prazo', value: (r) => date((r as TaskReportRow).dueDate) },
+    { label: 'Situação do prazo', value: (r) => deadlineLabels[(r as TaskReportRow).deadlineStatus] },
     { label: 'Criação', value: (r) => date((r as TaskReportRow).createdAt) }, { label: 'Atualização', value: (r) => date((r as TaskReportRow).updatedAt) },
   ];
   return [

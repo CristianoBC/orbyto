@@ -15,6 +15,7 @@ import {
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { getDeadlineInfo } from '../common/deadline';
 import { CreateServiceOrderDto } from './dto/create-service-order.dto';
 import { ListServiceOrdersQueryDto } from './dto/list-service-orders-query.dto';
 import { UpdateServiceOrderDto } from './dto/update-service-order.dto';
@@ -82,6 +83,17 @@ export class ServiceOrdersService {
         },
         transaction,
       );
+      const deadline = getDeadlineInfo(created.dueDate, created.status, ['COMPLETED', 'CANCELED'], 3);
+      if (deadline.deadlineStatus === 'overdue' || deadline.deadlineStatus === 'dueSoon') {
+        await this.notifications.createForUsers([...new Set([user.id, ...recipients])], {
+          tenantId: user.tenantId,
+          title: deadline.deadlineStatus === 'overdue' ? 'Ordem de serviço salva com prazo vencido' : 'Ordem de serviço próxima do prazo',
+          message: `A ordem de serviço “${created.title}” requer atenção ao prazo.`,
+          type: NotificationType.WARNING,
+          entity: NotificationEntity.SERVICE_ORDER,
+          entityId: created.id,
+        }, transaction);
+      }
       return created;
     });
   }
@@ -226,6 +238,19 @@ export class ServiceOrdersService {
           },
           transaction,
         );
+      }
+
+      const dueDateChanged = dto.dueDate !== undefined && updated.dueDate?.getTime() !== current.dueDate?.getTime();
+      const deadline = getDeadlineInfo(updated.dueDate, updated.status, ['COMPLETED', 'CANCELED'], 3);
+      if (dueDateChanged && (deadline.deadlineStatus === 'overdue' || deadline.deadlineStatus === 'dueSoon')) {
+        await this.notifications.createForUsers([...new Set([user.id, current.requesterId, ...(updated.responsibleId ? [updated.responsibleId] : [])])], {
+          tenantId: user.tenantId,
+          title: deadline.deadlineStatus === 'overdue' ? 'Prazo vencido na ordem de serviço' : 'Ordem de serviço próxima do prazo',
+          message: `O prazo da ordem de serviço “${updated.title}” requer atenção.`,
+          type: NotificationType.WARNING,
+          entity: NotificationEntity.SERVICE_ORDER,
+          entityId: updated.id,
+        }, transaction);
       }
 
       return updated;
