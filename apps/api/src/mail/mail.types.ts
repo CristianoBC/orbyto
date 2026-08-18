@@ -1,6 +1,6 @@
 export type MailDeliveryResult =
   | { sent: true }
-  | { sent: false; reason: 'not_configured' | 'delivery_failed' };
+  | { sent: false; reason: 'disabled' | 'not_configured' | 'delivery_failed' };
 
 export interface PasswordResetMail {
   to: string;
@@ -14,4 +14,23 @@ export interface UserInvitationMail {
   name: string;
   inviteUrl: string;
   expiresInHours: number;
+}
+
+export type OperationalEntity = 'ServiceOrder' | 'Task' | 'Project';
+
+export interface OperationalMailBase {
+  to: string;
+  recipientName?: string | null;
+  title: string;
+  url: string;
+  fields: Array<{ label: string; value: string | null | undefined }>;
+}
+
+export interface OperationalAuditContext {
+  tenantId: string;
+  actorId: string;
+  entity: OperationalEntity;
+  entityId: string;
+  event: string;
+  recipient: string;
 }

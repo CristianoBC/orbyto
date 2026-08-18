@@ -1,13 +1,47 @@
 const escapeHtml = (value: string) =>
-  value.replace(/[&<>"']/g, (character) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#039;',
-  })[character]!);
+  value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+      })[character]!,
+  );
 
-export function passwordResetTemplate(name: string | null | undefined, resetUrl: string, expiresInMinutes: number) {
+export function operationalTemplate(
+  subject: string,
+  heading: string,
+  name: string | null | undefined,
+  fields: Array<{ label: string; value: string | null | undefined }>,
+  url: string,
+) {
+  const greeting = name?.trim() ? `Olá, ${name.trim()}.` : 'Olá.';
+  const visibleFields = fields.filter((field) => field.value?.trim());
+  const textFields = visibleFields
+    .map((field) => `${field.label}: ${field.value}`)
+    .join('\n');
+  const htmlFields = visibleFields
+    .map(
+      (field) =>
+        `<tr><td style="padding:7px 12px;color:#64748b">${escapeHtml(field.label)}</td><td style="padding:7px 12px;font-weight:600">${escapeHtml(field.value!)}</td></tr>`,
+    )
+    .join('');
+  const safeUrl = escapeHtml(url);
+  return {
+    subject,
+    text: `${greeting}\n\n${heading}\n\n${textFields}\n\nAcessar no Orbyto: ${url}`,
+    html: `<!doctype html><html lang="pt-BR"><body style="margin:0;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a"><table role="presentation" width="100%"><tr><td align="center" style="padding:40px 16px"><table role="presentation" width="100%" style="max-width:600px;background:#fff;border:1px solid #e5e7eb;border-radius:16px"><tr><td style="height:6px;background:linear-gradient(135deg,#6d4cff,#8b5cf6 45%,#ff6b4a);border-radius:16px 16px 0 0"></td></tr><tr><td style="padding:36px"><p style="margin:0 0 8px;color:#6d4cff;font-weight:700">ORBYTO</p><h1 style="margin:0 0 24px;font-size:24px">${escapeHtml(heading)}</h1><p>${escapeHtml(greeting)}</p><table role="presentation" width="100%" style="margin:20px 0;border-collapse:collapse">${htmlFields}</table><p style="margin:28px 0 0"><a href="${safeUrl}" style="display:inline-block;padding:14px 22px;background:#6d4cff;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Acessar no Orbyto</a></p></td></tr></table></td></tr></table></body></html>`,
+  };
+}
+
+export function passwordResetTemplate(
+  name: string | null | undefined,
+  resetUrl: string,
+  expiresInMinutes: number,
+) {
   const safeName = name?.trim() ? escapeHtml(name.trim()) : null;
   const safeUrl = escapeHtml(resetUrl);
   const greeting = safeName ? `Olá, ${safeName}.` : 'Olá.';
@@ -19,7 +53,11 @@ export function passwordResetTemplate(name: string | null | undefined, resetUrl:
   };
 }
 
-export function userInvitationTemplate(name: string, inviteUrl: string, expiresInHours: number) {
+export function userInvitationTemplate(
+  name: string,
+  inviteUrl: string,
+  expiresInHours: number,
+) {
   const safeName = escapeHtml(name.trim());
   const safeUrl = escapeHtml(inviteUrl);
   return {

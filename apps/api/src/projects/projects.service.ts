@@ -17,6 +17,7 @@ import {
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { MailService } from '../mail/mail.service';
 import { getDeadlineInfo } from '../common/deadline';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { ListProjectsQueryDto } from './dto/list-projects-query.dto';
@@ -55,7 +56,11 @@ const administrativeRoles: UserRole[] = [
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+    private readonly mail: MailService,
+  ) {}
 
   async create(user: AuthUser, dto: CreateProjectDto) {
     this.ensureSupportedFields(dto);
@@ -70,30 +75,70 @@ export class ProjectsService {
     await this.validateOwner(ownerId, user.tenantId);
 
     const project = await this.prisma.$transaction(async (transaction) => {
-      const created = await transaction.project.create({ data: {
-        tenantId: user.tenantId,
-        ownerId,
-        title: dto.name,
-        description: dto.description,
-        area: dto.department,
-        unit: dto.unit,
-        priority: dto.priority ?? Priority.MEDIUM,
-        status: dto.status ?? ProjectStatus.PLANNED,
-        startDate: dto.startDate,
-        dueDate: dto.endDate,
-        tags: this.serializeTags(dto.tags),
-      }, include: projectInclude });
-      await transaction.auditLog.create({ data: { tenantId: user.tenantId, userId: user.id, action: AuditAction.CREATE, entity: 'Project', entityId: created.id, metadata: { title: created.title, status: created.status, priority: created.priority, ownerId: created.ownerId } } });
-      const deadline = getDeadlineInfo(created.dueDate, created.status, ['COMPLETED', 'CANCELED'], 7);
-      if (deadline.deadlineStatus === 'overdue' || deadline.deadlineStatus === 'dueSoon') {
-        await this.notifications.createForUsers([...new Set([user.id, created.ownerId])], {
-          tenantId: user.tenantId, title: deadline.deadlineStatus === 'overdue' ? 'Projeto salvo com prazo vencido' : 'Projeto próximo do prazo',
-          message: `O projeto “${created.title}” requer atenção ao prazo.`, type: NotificationType.WARNING,
-          entity: NotificationEntity.PROJECT, entityId: created.id,
-        }, transaction);
+      const created = await transaction.project.create({
+        data: {
+          tenantId: user.tenantId,
+          ownerId,
+          title: dto.name,
+          description: dto.description,
+          area: dto.department,
+          unit: dto.unit,
+          priority: dto.priority ?? Priority.MEDIUM,
+          status: dto.status ?? ProjectStatus.PLANNED,
+          startDate: dto.startDate,
+          dueDate: dto.endDate,
+          tags: this.serializeTags(dto.tags),
+        },
+        include: projectInclude,
+      });
+      await transaction.auditLog.create({
+        data: {
+          tenantId: user.tenantId,
+          userId: user.id,
+          action: AuditAction.CREATE,
+          entity: 'Project',
+          entityId: created.id,
+          metadata: {
+            title: created.title,
+            status: created.status,
+            priority: created.priority,
+            ownerId: created.ownerId,
+          },
+        },
+      });
+      const deadline = getDeadlineInfo(
+        created.dueDate,
+        created.status,
+        ['COMPLETED', 'CANCELED'],
+        7,
+      );
+      if (
+        deadline.deadlineStatus === 'overdue' ||
+        deadline.deadlineStatus === 'dueSoon'
+      ) {
+        await this.notifications.createForUsers(
+          [...new Set([user.id, created.ownerId])],
+          {
+            tenantId: user.tenantId,
+            title:
+              deadline.deadlineStatus === 'overdue'
+                ? 'Projeto salvo com prazo vencido'
+                : 'Projeto próximo do prazo',
+            message: `O projeto “${created.title}” requer atenção ao prazo.`,
+            type: NotificationType.WARNING,
+            entity: NotificationEntity.PROJECT,
+            entityId: created.id,
+          },
+          transaction,
+        );
       }
       return created;
     });
+
+    if (project.ownerId !== user.id)
+      await this.emailOwner(user, project, 'PROJECT_CREATED', true).catch(
+        () => undefined,
+      );
 
     return this.toProjectResponse(project);
   }
@@ -217,7 +262,7 @@ export class ProjectsService {
       data.finishedAt = null;
     }
 
-    return this.prisma.$transaction(async (transaction) => {
+    const updated = await this.prisma.$transaction(async (transaction) => {
       await transaction.project.updateMany({
         where: { id: current.id, tenantId: user.tenantId },
         data,
@@ -238,15 +283,35 @@ export class ProjectsService {
         },
       });
 
-      const effectiveDueDate = dto.endDate === undefined ? current.dueDate : dto.endDate;
+      const effectiveDueDate =
+        dto.endDate === undefined ? current.dueDate : dto.endDate;
       const effectiveStatus = dto.status ?? current.status;
-      const deadline = getDeadlineInfo(effectiveDueDate, effectiveStatus, ['COMPLETED', 'CANCELED'], 7);
-      if (dto.endDate !== undefined && (deadline.deadlineStatus === 'overdue' || deadline.deadlineStatus === 'dueSoon')) {
-        await this.notifications.createForUsers([...new Set([user.id, dto.ownerId ?? current.ownerId])], {
-          tenantId: user.tenantId, title: deadline.deadlineStatus === 'overdue' ? 'Prazo vencido no projeto' : 'Projeto próximo do prazo',
-          message: `O prazo do projeto “${current.title}” requer atenção.`, type: NotificationType.WARNING,
-          entity: NotificationEntity.PROJECT, entityId: current.id,
-        }, transaction);
+      const deadline = getDeadlineInfo(
+        effectiveDueDate,
+        effectiveStatus,
+        ['COMPLETED', 'CANCELED'],
+        7,
+      );
+      if (
+        dto.endDate !== undefined &&
+        (deadline.deadlineStatus === 'overdue' ||
+          deadline.deadlineStatus === 'dueSoon')
+      ) {
+        await this.notifications.createForUsers(
+          [...new Set([user.id, dto.ownerId ?? current.ownerId])],
+          {
+            tenantId: user.tenantId,
+            title:
+              deadline.deadlineStatus === 'overdue'
+                ? 'Prazo vencido no projeto'
+                : 'Projeto próximo do prazo',
+            message: `O prazo do projeto “${current.title}” requer atenção.`,
+            type: NotificationType.WARNING,
+            entity: NotificationEntity.PROJECT,
+            entityId: current.id,
+          },
+          transaction,
+        );
       }
 
       const updated = await transaction.project.findFirst({
@@ -258,8 +323,60 @@ export class ProjectsService {
         throw new NotFoundException('Projeto não encontrado.');
       }
 
-      return this.toProjectResponse(updated);
+      return updated;
     });
+    if (updated.ownerId !== user.id) {
+      const dueDateChanged =
+        dto.endDate !== undefined &&
+        updated.dueDate?.getTime() !== current.dueDate?.getTime();
+      await this.emailOwner(
+        user,
+        updated,
+        dueDateChanged ? 'PROJECT_DEADLINE_CHANGED' : 'PROJECT_UPDATED',
+        false,
+        dueDateChanged,
+      ).catch(() => undefined);
+    }
+    return this.toProjectResponse(updated);
+  }
+
+  private async emailOwner(
+    user: AuthUser,
+    project: ProjectResult,
+    event: string,
+    created: boolean,
+    deadlineChanged = false,
+  ) {
+    const [recipient] = await this.notifications.activeRecipients(
+      user.tenantId,
+      [project.ownerId],
+    );
+    if (!recipient) return;
+    const input = {
+      to: recipient.email,
+      recipientName: recipient.name,
+      title: project.title,
+      url: this.mail.webUrl(`/projects/${project.id}`),
+      fields: [
+        { label: 'Status', value: this.mail.formatEnum(project.status) },
+        { label: 'Prioridade', value: this.mail.formatEnum(project.priority) },
+        { label: 'Prazo', value: this.mail.formatDate(project.dueDate) },
+      ],
+    };
+    const delivery = created
+      ? await this.mail.sendProjectCreatedEmail(input)
+      : await this.mail.sendProjectUpdatedEmail(input, deadlineChanged);
+    await this.mail.auditOperationalDelivery(
+      {
+        tenantId: user.tenantId,
+        actorId: user.id,
+        entity: 'Project',
+        entityId: project.id,
+        event,
+        recipient: recipient.email,
+      },
+      delivery,
+    );
   }
 
   private async validateOwner(ownerId: string, tenantId: string) {

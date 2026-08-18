@@ -16,6 +16,7 @@ import {
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { MailService } from '../mail/mail.service';
 import { getDeadlineInfo } from '../common/deadline';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { ListTasksQueryDto } from './dto/list-tasks-query.dto';
@@ -38,7 +39,11 @@ const administrativeRoles: UserRole[] = [
 
 @Injectable()
 export class TasksService {
-  constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+    private readonly mail: MailService,
+  ) {}
 
   async create(user: AuthUser, dto: CreateTaskDto) {
     this.ensureSupportedFields(dto);
@@ -57,7 +62,7 @@ export class TasksService {
       await this.validateAssignee(dto.assigneeId, user.tenantId);
     }
 
-    return this.prisma.$transaction(async (transaction) => {
+    const created = await this.prisma.$transaction(async (transaction) => {
       const task = await transaction.task.create({
         data: {
           tenantId: user.tenantId,
@@ -84,24 +89,60 @@ export class TasksService {
       });
 
       if (task.assigneeId && task.assigneeId !== user.id) {
-        await this.notifications.createForUser({
-          tenantId: user.tenantId, userId: task.assigneeId, title: 'Nova tarefa atribuída',
-          message: `A tarefa “${task.title}” foi atribuída a você.`, type: NotificationType.ACTION_REQUIRED,
-          entity: NotificationEntity.TASK, entityId: task.id,
-        }, transaction);
+        await this.notifications.createForUser(
+          {
+            tenantId: user.tenantId,
+            userId: task.assigneeId,
+            title: 'Nova tarefa atribuída',
+            message: `A tarefa “${task.title}” foi atribuída a você.`,
+            type: NotificationType.ACTION_REQUIRED,
+            entity: NotificationEntity.TASK,
+            entityId: task.id,
+          },
+          transaction,
+        );
       }
 
-      const deadline = getDeadlineInfo(task.dueDate, task.status, ['DONE', 'CANCELED'], 3);
-      if (deadline.deadlineStatus === 'overdue' || deadline.deadlineStatus === 'dueSoon') {
-        await this.notifications.createForUsers([...new Set([user.id, project.ownerId, ...(task.assigneeId ? [task.assigneeId] : [])])], {
-          tenantId: user.tenantId, title: deadline.deadlineStatus === 'overdue' ? 'Tarefa salva com prazo vencido' : 'Tarefa próxima do prazo',
-          message: `A tarefa “${task.title}” requer atenção ao prazo.`, type: NotificationType.WARNING,
-          entity: NotificationEntity.TASK, entityId: task.id,
-        }, transaction);
+      const deadline = getDeadlineInfo(
+        task.dueDate,
+        task.status,
+        ['DONE', 'CANCELED'],
+        3,
+      );
+      if (
+        deadline.deadlineStatus === 'overdue' ||
+        deadline.deadlineStatus === 'dueSoon'
+      ) {
+        await this.notifications.createForUsers(
+          [
+            ...new Set([
+              user.id,
+              project.ownerId,
+              ...(task.assigneeId ? [task.assigneeId] : []),
+            ]),
+          ],
+          {
+            tenantId: user.tenantId,
+            title:
+              deadline.deadlineStatus === 'overdue'
+                ? 'Tarefa salva com prazo vencido'
+                : 'Tarefa próxima do prazo',
+            message: `A tarefa “${task.title}” requer atenção ao prazo.`,
+            type: NotificationType.WARNING,
+            entity: NotificationEntity.TASK,
+            entityId: task.id,
+          },
+          transaction,
+        );
       }
 
-      return this.toTaskResponse(task);
+      return task;
     });
+    if (created.assigneeId && created.assigneeId !== user.id)
+      await this.emailAssignee(user, created, 'TASK_ASSIGNED').catch(
+        () => undefined,
+      );
+    return this.toTaskResponse(created);
   }
 
   async findMy(user: AuthUser, query: ListTasksQueryDto) {
@@ -132,7 +173,8 @@ export class TasksService {
     query: ListTasksQueryDto,
   ) {
     const project = await this.findProject(projectId, user.tenantId);
-    const isAdmin = administrativeRoles.includes(user.role) || user.role === UserRole.VIEWER;
+    const isAdmin =
+      administrativeRoles.includes(user.role) || user.role === UserRole.VIEWER;
 
     if (!isAdmin && project.ownerId !== user.id) {
       const assignedTask = await this.prisma.task.findFirst({
@@ -219,57 +261,234 @@ export class TasksService {
       data.finishedAt = null;
     }
 
-    return this.prisma.$transaction(async (transaction) => {
-      await transaction.task.updateMany({
-        where: { id: current.id, tenantId: user.tenantId },
-        data,
-      });
+    const updatedResponse = await this.prisma.$transaction(
+      async (transaction) => {
+        await transaction.task.updateMany({
+          where: { id: current.id, tenantId: user.tenantId },
+          data,
+        });
 
-      await transaction.auditLog.create({
-        data: {
-          tenantId: user.tenantId,
-          userId: user.id,
-          action: statusChanged
-            ? AuditAction.STATUS_CHANGE
-            : AuditAction.UPDATE,
-          entity: 'Task',
-          entityId: current.id,
-          metadata: statusChanged
-            ? { previousStatus: current.status, newStatus: dto.status }
-            : { updatedFields: Object.keys(dto) },
-        },
-      });
+        await transaction.auditLog.create({
+          data: {
+            tenantId: user.tenantId,
+            userId: user.id,
+            action: statusChanged
+              ? AuditAction.STATUS_CHANGE
+              : AuditAction.UPDATE,
+            entity: 'Task',
+            entityId: current.id,
+            metadata: statusChanged
+              ? { previousStatus: current.status, newStatus: dto.status }
+              : { updatedFields: Object.keys(dto) },
+          },
+        });
 
-      const recipients = new Set<string>();
-      if (dto.assigneeId && dto.assigneeId !== current.assigneeId && dto.assigneeId !== user.id) recipients.add(dto.assigneeId);
-      if (statusChanged && current.assigneeId && current.assigneeId !== user.id) recipients.add(current.assigneeId);
-      if (statusChanged && current.project.ownerId !== user.id) recipients.add(current.project.ownerId);
-      await this.notifications.createForUsers([...recipients], {
-        tenantId: user.tenantId,
-        title: dto.assigneeId && dto.assigneeId !== current.assigneeId ? 'Tarefa atribuída a você' : 'Status de tarefa alterado',
-        message: statusChanged ? `A tarefa “${current.title}” mudou para ${dto.status}.` : `A tarefa “${current.title}” foi atribuída a você.`,
-        type: NotificationType.INFO, entity: NotificationEntity.TASK, entityId: current.id,
-      }, transaction);
+        const recipients = new Set<string>();
+        if (
+          dto.assigneeId &&
+          dto.assigneeId !== current.assigneeId &&
+          dto.assigneeId !== user.id
+        )
+          recipients.add(dto.assigneeId);
+        if (
+          statusChanged &&
+          current.assigneeId &&
+          current.assigneeId !== user.id
+        )
+          recipients.add(current.assigneeId);
+        if (statusChanged && current.project.ownerId !== user.id)
+          recipients.add(current.project.ownerId);
+        await this.notifications.createForUsers(
+          [...recipients],
+          {
+            tenantId: user.tenantId,
+            title:
+              dto.assigneeId && dto.assigneeId !== current.assigneeId
+                ? 'Tarefa atribuída a você'
+                : 'Status de tarefa alterado',
+            message: statusChanged
+              ? `A tarefa “${current.title}” mudou para ${dto.status}.`
+              : `A tarefa “${current.title}” foi atribuída a você.`,
+            type: NotificationType.INFO,
+            entity: NotificationEntity.TASK,
+            entityId: current.id,
+          },
+          transaction,
+        );
 
-      const effectiveDueDate = dto.dueDate === undefined ? current.dueDate : dto.dueDate;
-      const effectiveStatus = dto.status ?? current.status;
-      const deadline = getDeadlineInfo(effectiveDueDate, effectiveStatus, ['DONE', 'CANCELED'], 3);
-      if (dto.dueDate !== undefined && (deadline.deadlineStatus === 'overdue' || deadline.deadlineStatus === 'dueSoon')) {
-        await this.notifications.createForUsers([...new Set([user.id, current.project.ownerId, ...(dto.assigneeId ?? current.assigneeId ? [dto.assigneeId ?? current.assigneeId!] : [])])], {
-          tenantId: user.tenantId, title: deadline.deadlineStatus === 'overdue' ? 'Prazo vencido na tarefa' : 'Tarefa próxima do prazo',
-          message: `O prazo da tarefa “${current.title}” requer atenção.`, type: NotificationType.WARNING,
-          entity: NotificationEntity.TASK, entityId: current.id,
-        }, transaction);
-      }
+        const effectiveDueDate =
+          dto.dueDate === undefined ? current.dueDate : dto.dueDate;
+        const effectiveStatus = dto.status ?? current.status;
+        const deadline = getDeadlineInfo(
+          effectiveDueDate,
+          effectiveStatus,
+          ['DONE', 'CANCELED'],
+          3,
+        );
+        if (
+          dto.dueDate !== undefined &&
+          (deadline.deadlineStatus === 'overdue' ||
+            deadline.deadlineStatus === 'dueSoon')
+        ) {
+          await this.notifications.createForUsers(
+            [
+              ...new Set([
+                user.id,
+                current.project.ownerId,
+                ...((dto.assigneeId ?? current.assigneeId)
+                  ? [dto.assigneeId ?? current.assigneeId!]
+                  : []),
+              ]),
+            ],
+            {
+              tenantId: user.tenantId,
+              title:
+                deadline.deadlineStatus === 'overdue'
+                  ? 'Prazo vencido na tarefa'
+                  : 'Tarefa próxima do prazo',
+              message: `O prazo da tarefa “${current.title}” requer atenção.`,
+              type: NotificationType.WARNING,
+              entity: NotificationEntity.TASK,
+              entityId: current.id,
+            },
+            transaction,
+          );
+        }
 
-      const updated = await transaction.task.findFirst({
-        where: { id: current.id, tenantId: user.tenantId },
-        include: taskInclude,
-      });
+        const updated = await transaction.task.findFirst({
+          where: { id: current.id, tenantId: user.tenantId },
+          include: taskInclude,
+        });
 
-      if (!updated) throw new NotFoundException('Tarefa não encontrada.');
-      return this.toTaskResponse(updated);
+        if (!updated) throw new NotFoundException('Tarefa não encontrada.');
+        return updated;
+      },
+    );
+    const assigneeChanged =
+      dto.assigneeId !== undefined && dto.assigneeId !== current.assigneeId;
+    if (
+      assigneeChanged &&
+      updatedResponse.assigneeId &&
+      updatedResponse.assigneeId !== user.id
+    )
+      await this.emailAssignee(user, updatedResponse, 'TASK_ASSIGNED').catch(
+        () => undefined,
+      );
+    if (statusChanged) {
+      const ids = [
+        updatedResponse.assigneeId,
+        updatedResponse.project.ownerId,
+      ].filter((id): id is string => Boolean(id) && id !== user.id);
+      await this.emailTaskUpdate(
+        user,
+        updatedResponse,
+        ids,
+        'status',
+        current.status,
+      ).catch(() => undefined);
+    }
+    const dueDateChanged =
+      dto.dueDate !== undefined &&
+      updatedResponse.dueDate?.getTime() !== current.dueDate?.getTime();
+    if (
+      dueDateChanged &&
+      updatedResponse.assigneeId &&
+      updatedResponse.assigneeId !== user.id
+    )
+      await this.emailTaskUpdate(
+        user,
+        updatedResponse,
+        [updatedResponse.assigneeId],
+        'deadline',
+      ).catch(() => undefined);
+    return this.toTaskResponse(updatedResponse);
+  }
+
+  private async emailAssignee(user: AuthUser, task: TaskResult, event: string) {
+    if (!task.assigneeId) return;
+    const [recipient] = await this.notifications.activeRecipients(
+      user.tenantId,
+      [task.assigneeId],
+    );
+    if (!recipient) return;
+    const delivery = await this.mail.sendTaskAssignedEmail({
+      to: recipient.email,
+      recipientName: recipient.name,
+      title: task.title,
+      url: this.mail.webUrl('/tasks'),
+      fields: [
+        { label: 'Projeto', value: task.project.title },
+        { label: 'Prioridade', value: this.mail.formatEnum(task.priority) },
+        { label: 'Prazo', value: this.mail.formatDate(task.dueDate) },
+      ],
     });
+    await this.mail.auditOperationalDelivery(
+      {
+        tenantId: user.tenantId,
+        actorId: user.id,
+        entity: 'Task',
+        entityId: task.id,
+        event,
+        recipient: recipient.email,
+      },
+      delivery,
+    );
+  }
+
+  private async emailTaskUpdate(
+    user: AuthUser,
+    task: TaskResult,
+    ids: string[],
+    kind: 'status' | 'deadline',
+    previousStatus?: TaskStatus,
+  ) {
+    for (const recipient of await this.notifications.activeRecipients(
+      user.tenantId,
+      ids,
+    )) {
+      const fields =
+        kind === 'status'
+          ? [
+              { label: 'Projeto', value: task.project.title },
+              {
+                label: 'Status anterior',
+                value: this.mail.formatEnum(previousStatus),
+              },
+              {
+                label: 'Novo status',
+                value: this.mail.formatEnum(task.status),
+              },
+            ]
+          : [
+              { label: 'Projeto', value: task.project.title },
+              {
+                label: 'Novo prazo',
+                value: this.mail.formatDate(task.dueDate),
+              },
+            ];
+      const delivery = await this.mail.sendTaskUpdatedEmail(
+        {
+          to: recipient.email,
+          recipientName: recipient.name,
+          title: task.title,
+          url: this.mail.webUrl('/tasks'),
+          fields,
+        },
+        kind,
+      );
+      await this.mail.auditOperationalDelivery(
+        {
+          tenantId: user.tenantId,
+          actorId: user.id,
+          entity: 'Task',
+          entityId: task.id,
+          event:
+            kind === 'status' ? 'TASK_STATUS_CHANGED' : 'TASK_DEADLINE_CHANGED',
+          recipient: recipient.email,
+        },
+        delivery,
+      );
+    }
   }
 
   private findProject(id: string, tenantId: string) {

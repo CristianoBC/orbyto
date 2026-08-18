@@ -6,7 +6,14 @@ import {
   OnModuleInit,
   StreamableFile,
 } from '@nestjs/common';
-import { AuditAction, NotificationEntity, NotificationType, Prisma, RefType, UserRole } from '@prisma/client';
+import {
+  AuditAction,
+  NotificationEntity,
+  NotificationType,
+  Prisma,
+  RefType,
+  UserRole,
+} from '@prisma/client';
 import type { Express } from 'express';
 import { createReadStream } from 'node:fs';
 import { access, mkdir, unlink, writeFile } from 'node:fs/promises';
@@ -15,6 +22,7 @@ import { randomUUID } from 'node:crypto';
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { MailService } from '../mail/mail.service';
 
 const attachmentInclude = {
   uploadedBy: {
@@ -42,7 +50,11 @@ export class AttachmentsService implements OnModuleInit {
     'uploads',
   );
 
-  constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+    private readonly mail: MailService,
+  ) {}
 
   async onModuleInit() {
     await mkdir(this.uploadsDirectory, { recursive: true });
@@ -58,16 +70,26 @@ export class AttachmentsService implements OnModuleInit {
     file?: Express.Multer.File,
   ) {
     if (user.role === UserRole.VIEWER) {
-      throw new ForbiddenException('O perfil Visualizador não pode enviar anexos.');
+      throw new ForbiddenException(
+        'O perfil Visualizador não pode enviar anexos.',
+      );
     }
     if (!file) {
       throw new BadRequestException('Envie um arquivo no campo file.');
     }
 
-    const serviceOrder = await this.validateServiceOrderAccess(user, serviceOrderId, 'anexar');
-    const recipients = user.id === serviceOrder.requesterId
-      ? await this.notifications.serviceOrderStaffRecipientIds(user.tenantId, user.id)
-      : [serviceOrder.requesterId].filter((id) => id !== user.id);
+    const serviceOrder = await this.validateServiceOrderAccess(
+      user,
+      serviceOrderId,
+      'anexar',
+    );
+    const recipients =
+      user.id === serviceOrder.requesterId
+        ? await this.notifications.serviceOrderStaffRecipientIds(
+            user.tenantId,
+            user.id,
+          )
+        : [serviceOrder.requesterId].filter((id) => id !== user.id);
 
     const extension = AttachmentsService.getFileExtension(file.originalname);
     const fileName = `${randomUUID()}${extension}`;
@@ -90,8 +112,11 @@ export class AttachmentsService implements OnModuleInit {
     await mkdir(directory, { recursive: true });
     await writeFile(filePath, file.buffer, { flag: 'wx' });
 
+    let attachment: Prisma.AttachmentGetPayload<{
+      include: typeof attachmentInclude;
+    }>;
     try {
-      return await this.prisma.$transaction(async (transaction) => {
+      attachment = await this.prisma.$transaction(async (transaction) => {
         const attachment = await transaction.attachment.create({
           data: {
             tenantId: user.tenantId,
@@ -119,11 +144,18 @@ export class AttachmentsService implements OnModuleInit {
           },
         });
 
-        await this.notifications.createForUsers(recipients, {
-          tenantId: user.tenantId, title: 'Novo anexo na ordem de serviço',
-          message: `${user.name} adicionou o arquivo “${basename(file.originalname)}”.`,
-          type: NotificationType.INFO, entity: NotificationEntity.SERVICE_ORDER, entityId: serviceOrderId,
-        }, transaction);
+        await this.notifications.createForUsers(
+          recipients,
+          {
+            tenantId: user.tenantId,
+            title: 'Novo anexo na ordem de serviço',
+            message: `${user.name} adicionou o arquivo “${basename(file.originalname)}”.`,
+            type: NotificationType.INFO,
+            entity: NotificationEntity.SERVICE_ORDER,
+            entityId: serviceOrderId,
+          },
+          transaction,
+        );
 
         return attachment;
       });
@@ -131,6 +163,13 @@ export class AttachmentsService implements OnModuleInit {
       await unlink(filePath).catch(() => undefined);
       throw error;
     }
+    await this.emailRecipients(
+      user,
+      serviceOrder,
+      recipients,
+      basename(file.originalname),
+    ).catch(() => undefined);
+    return attachment;
   }
 
   async findByServiceOrder(user: AuthUser, serviceOrderId: string) {
@@ -212,7 +251,7 @@ export class AttachmentsService implements OnModuleInit {
   ) {
     const serviceOrder = await this.prisma.serviceOrder.findFirst({
       where: { id: serviceOrderId, tenantId: user.tenantId },
-      select: { requesterId: true, responsibleId: true },
+      select: { id: true, title: true, requesterId: true, responsibleId: true },
     });
 
     if (!serviceOrder) {
@@ -235,5 +274,47 @@ export class AttachmentsService implements OnModuleInit {
     }
 
     return serviceOrder;
+  }
+
+  private async emailRecipients(
+    user: AuthUser,
+    serviceOrder: {
+      id: string;
+      title: string;
+      requesterId: string;
+      responsibleId: string | null;
+    },
+    ids: string[],
+    fileName: string,
+  ) {
+    for (const recipient of await this.notifications.activeRecipients(
+      user.tenantId,
+      ids,
+    )) {
+      const requesterLink = recipient.id === serviceOrder.requesterId;
+      const delivery = await this.mail.sendServiceOrderAttachmentEmail({
+        to: recipient.email,
+        recipientName: recipient.name,
+        title: serviceOrder.title,
+        url: this.mail.webUrl(
+          `${requesterLink ? '/requester' : ''}/service-orders/${serviceOrder.id}`,
+        ),
+        fields: [
+          { label: 'Enviado por', value: user.name },
+          { label: 'Arquivo', value: fileName },
+        ],
+      });
+      await this.mail.auditOperationalDelivery(
+        {
+          tenantId: user.tenantId,
+          actorId: user.id,
+          entity: 'ServiceOrder',
+          entityId: serviceOrder.id,
+          event: 'SERVICE_ORDER_ATTACHMENT',
+          recipient: recipient.email,
+        },
+        delivery,
+      );
+    }
   }
 }

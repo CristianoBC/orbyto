@@ -15,6 +15,7 @@ import {
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { MailService } from '../mail/mail.service';
 import { getDeadlineInfo } from '../common/deadline';
 import { CreateServiceOrderDto } from './dto/create-service-order.dto';
 import { ListServiceOrdersQueryDto } from './dto/list-service-orders-query.dto';
@@ -36,6 +37,7 @@ export class ServiceOrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly mail: MailService,
   ) {}
 
   async create(user: AuthUser, dto: CreateServiceOrderDto) {
@@ -46,7 +48,7 @@ export class ServiceOrdersService {
             user.id,
           )
         : [];
-    return this.prisma.$transaction(async (transaction) => {
+    const created = await this.prisma.$transaction(async (transaction) => {
       const created = await transaction.serviceOrder.create({
         data: {
           ...dto,
@@ -83,19 +85,42 @@ export class ServiceOrdersService {
         },
         transaction,
       );
-      const deadline = getDeadlineInfo(created.dueDate, created.status, ['COMPLETED', 'CANCELED'], 3);
-      if (deadline.deadlineStatus === 'overdue' || deadline.deadlineStatus === 'dueSoon') {
-        await this.notifications.createForUsers([...new Set([user.id, ...recipients])], {
-          tenantId: user.tenantId,
-          title: deadline.deadlineStatus === 'overdue' ? 'Ordem de serviço salva com prazo vencido' : 'Ordem de serviço próxima do prazo',
-          message: `A ordem de serviço “${created.title}” requer atenção ao prazo.`,
-          type: NotificationType.WARNING,
-          entity: NotificationEntity.SERVICE_ORDER,
-          entityId: created.id,
-        }, transaction);
+      const deadline = getDeadlineInfo(
+        created.dueDate,
+        created.status,
+        ['COMPLETED', 'CANCELED'],
+        3,
+      );
+      if (
+        deadline.deadlineStatus === 'overdue' ||
+        deadline.deadlineStatus === 'dueSoon'
+      ) {
+        await this.notifications.createForUsers(
+          [...new Set([user.id, ...recipients])],
+          {
+            tenantId: user.tenantId,
+            title:
+              deadline.deadlineStatus === 'overdue'
+                ? 'Ordem de serviço salva com prazo vencido'
+                : 'Ordem de serviço próxima do prazo',
+            message: `A ordem de serviço “${created.title}” requer atenção ao prazo.`,
+            type: NotificationType.WARNING,
+            entity: NotificationEntity.SERVICE_ORDER,
+            entityId: created.id,
+          },
+          transaction,
+        );
       }
       return created;
     });
+    if (recipients.length)
+      await this.emailStaff(
+        user,
+        created,
+        recipients,
+        'SERVICE_ORDER_CREATED',
+      ).catch(() => undefined);
+    return created;
   }
 
   findMy(user: AuthUser, query: ListServiceOrdersQueryDto) {
@@ -197,7 +222,7 @@ export class ServiceOrdersService {
       data.finishedAt = null;
     }
 
-    return this.prisma.$transaction(async (transaction) => {
+    const updated = await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.serviceOrder.update({
         where: { id: current.id },
         data,
@@ -240,21 +265,142 @@ export class ServiceOrdersService {
         );
       }
 
-      const dueDateChanged = dto.dueDate !== undefined && updated.dueDate?.getTime() !== current.dueDate?.getTime();
-      const deadline = getDeadlineInfo(updated.dueDate, updated.status, ['COMPLETED', 'CANCELED'], 3);
-      if (dueDateChanged && (deadline.deadlineStatus === 'overdue' || deadline.deadlineStatus === 'dueSoon')) {
-        await this.notifications.createForUsers([...new Set([user.id, current.requesterId, ...(updated.responsibleId ? [updated.responsibleId] : [])])], {
-          tenantId: user.tenantId,
-          title: deadline.deadlineStatus === 'overdue' ? 'Prazo vencido na ordem de serviço' : 'Ordem de serviço próxima do prazo',
-          message: `O prazo da ordem de serviço “${updated.title}” requer atenção.`,
-          type: NotificationType.WARNING,
-          entity: NotificationEntity.SERVICE_ORDER,
-          entityId: updated.id,
-        }, transaction);
+      const dueDateChanged =
+        dto.dueDate !== undefined &&
+        updated.dueDate?.getTime() !== current.dueDate?.getTime();
+      const deadline = getDeadlineInfo(
+        updated.dueDate,
+        updated.status,
+        ['COMPLETED', 'CANCELED'],
+        3,
+      );
+      if (
+        dueDateChanged &&
+        (deadline.deadlineStatus === 'overdue' ||
+          deadline.deadlineStatus === 'dueSoon')
+      ) {
+        await this.notifications.createForUsers(
+          [
+            ...new Set([
+              user.id,
+              current.requesterId,
+              ...(updated.responsibleId ? [updated.responsibleId] : []),
+            ]),
+          ],
+          {
+            tenantId: user.tenantId,
+            title:
+              deadline.deadlineStatus === 'overdue'
+                ? 'Prazo vencido na ordem de serviço'
+                : 'Ordem de serviço próxima do prazo',
+            message: `O prazo da ordem de serviço “${updated.title}” requer atenção.`,
+            type: NotificationType.WARNING,
+            entity: NotificationEntity.SERVICE_ORDER,
+            entityId: updated.id,
+          },
+          transaction,
+        );
       }
 
       return updated;
     });
+    if (current.requesterId !== user.id) {
+      const [recipient] = await this.notifications
+        .activeRecipients(user.tenantId, [current.requesterId])
+        .catch(() => []);
+      if (recipient) {
+        const delivery = await this.mail.sendServiceOrderUpdatedEmail(
+          {
+            to: recipient.email,
+            recipientName: recipient.name,
+            title: updated.title,
+            url: this.mail.webUrl(`/requester/service-orders/${updated.id}`),
+            fields: statusChanged
+              ? [
+                  {
+                    label: 'Status anterior',
+                    value: this.mail.formatEnum(current.status),
+                  },
+                  {
+                    label: 'Novo status',
+                    value: this.mail.formatEnum(updated.status),
+                  },
+                ]
+              : [
+                  {
+                    label: 'Status',
+                    value: this.mail.formatEnum(updated.status),
+                  },
+                  {
+                    label: 'Prioridade',
+                    value: this.mail.formatEnum(updated.priority),
+                  },
+                  {
+                    label: 'Prazo',
+                    value: this.mail.formatDate(updated.dueDate),
+                  },
+                ],
+          },
+          statusChanged,
+        );
+        await this.mail.auditOperationalDelivery(
+          {
+            tenantId: user.tenantId,
+            actorId: user.id,
+            entity: 'ServiceOrder',
+            entityId: updated.id,
+            event: statusChanged
+              ? 'SERVICE_ORDER_STATUS_CHANGED'
+              : 'SERVICE_ORDER_UPDATED',
+            recipient: recipient.email,
+          },
+          delivery,
+        );
+      }
+    }
+    return updated;
+  }
+
+  private async emailStaff(
+    user: AuthUser,
+    serviceOrder: Prisma.ServiceOrderGetPayload<{
+      include: typeof serviceOrderInclude;
+    }>,
+    ids: string[],
+    event: string,
+  ) {
+    const recipients = await this.notifications.activeRecipients(
+      user.tenantId,
+      ids,
+    );
+    for (const recipient of recipients) {
+      const delivery = await this.mail.sendServiceOrderCreatedEmail({
+        to: recipient.email,
+        recipientName: recipient.name,
+        title: serviceOrder.title,
+        url: this.mail.webUrl(`/service-orders/${serviceOrder.id}`),
+        fields: [
+          { label: 'Solicitante', value: serviceOrder.requester.name },
+          { label: 'Unidade', value: serviceOrder.unit },
+          {
+            label: 'Prioridade',
+            value: this.mail.formatEnum(serviceOrder.priority),
+          },
+          { label: 'Prazo', value: this.mail.formatDate(serviceOrder.dueDate) },
+        ],
+      });
+      await this.mail.auditOperationalDelivery(
+        {
+          tenantId: user.tenantId,
+          actorId: user.id,
+          entity: 'ServiceOrder',
+          entityId: serviceOrder.id,
+          event,
+          recipient: recipient.email,
+        },
+        delivery,
+      );
+    }
   }
 
   private buildWhere(

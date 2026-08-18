@@ -4,10 +4,18 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { AuditAction, NotificationEntity, NotificationType, Prisma, RefType, UserRole } from '@prisma/client';
+import {
+  AuditAction,
+  NotificationEntity,
+  NotificationType,
+  Prisma,
+  RefType,
+  UserRole,
+} from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { MailService } from '../mail/mail.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 
 const commentInclude = {
@@ -30,11 +38,17 @@ const administrativeRoles: UserRole[] = [
 
 @Injectable()
 export class CommentsService {
-  constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+    private readonly mail: MailService,
+  ) {}
 
   async create(user: AuthUser, dto: CreateCommentDto) {
     if (user.role === UserRole.VIEWER) {
-      throw new ForbiddenException('O perfil Visualizador não pode adicionar comentários.');
+      throw new ForbiddenException(
+        'O perfil Visualizador não pode adicionar comentários.',
+      );
     }
     if (dto.refType !== RefType.SERVICE_ORDER) {
       throw new BadRequestException(
@@ -42,12 +56,20 @@ export class CommentsService {
       );
     }
 
-    const serviceOrder = await this.validateServiceOrderAccess(user, dto.refId, 'comentar');
-    const recipients = user.id === serviceOrder.requesterId
-      ? await this.notifications.serviceOrderStaffRecipientIds(user.tenantId, user.id)
-      : [serviceOrder.requesterId].filter((id) => id !== user.id);
+    const serviceOrder = await this.validateServiceOrderAccess(
+      user,
+      dto.refId,
+      'comentar',
+    );
+    const recipients =
+      user.id === serviceOrder.requesterId
+        ? await this.notifications.serviceOrderStaffRecipientIds(
+            user.tenantId,
+            user.id,
+          )
+        : [serviceOrder.requesterId].filter((id) => id !== user.id);
 
-    return this.prisma.$transaction(async (transaction) => {
+    const comment = await this.prisma.$transaction(async (transaction) => {
       const comment = await transaction.comment.create({
         data: {
           tenantId: user.tenantId,
@@ -71,14 +93,28 @@ export class CommentsService {
         },
       });
 
-      await this.notifications.createForUsers(recipients, {
-        tenantId: user.tenantId, title: 'Novo comentário na ordem de serviço',
-        message: `${user.name} comentou na ordem de serviço.`, type: NotificationType.INFO,
-        entity: NotificationEntity.SERVICE_ORDER, entityId: dto.refId,
-      }, transaction);
+      await this.notifications.createForUsers(
+        recipients,
+        {
+          tenantId: user.tenantId,
+          title: 'Novo comentário na ordem de serviço',
+          message: `${user.name} comentou na ordem de serviço.`,
+          type: NotificationType.INFO,
+          entity: NotificationEntity.SERVICE_ORDER,
+          entityId: dto.refId,
+        },
+        transaction,
+      );
 
       return comment;
     });
+    await this.emailRecipients(
+      user,
+      serviceOrder,
+      recipients,
+      'SERVICE_ORDER_COMMENT',
+    ).catch(() => undefined);
+    return comment;
   }
 
   async findByServiceOrder(user: AuthUser, serviceOrderId: string) {
@@ -102,7 +138,7 @@ export class CommentsService {
   ) {
     const serviceOrder = await this.prisma.serviceOrder.findFirst({
       where: { id: serviceOrderId, tenantId: user.tenantId },
-      select: { requesterId: true, responsibleId: true },
+      select: { id: true, title: true, requesterId: true, responsibleId: true },
     });
 
     if (!serviceOrder) {
@@ -125,5 +161,44 @@ export class CommentsService {
     }
 
     return serviceOrder;
+  }
+
+  private async emailRecipients(
+    user: AuthUser,
+    serviceOrder: {
+      id: string;
+      title: string;
+      requesterId: string;
+      responsibleId: string | null;
+    },
+    ids: string[],
+    event: string,
+  ) {
+    for (const recipient of await this.notifications.activeRecipients(
+      user.tenantId,
+      ids,
+    )) {
+      const requesterLink = recipient.id === serviceOrder.requesterId;
+      const delivery = await this.mail.sendServiceOrderCommentEmail({
+        to: recipient.email,
+        recipientName: recipient.name,
+        title: serviceOrder.title,
+        url: this.mail.webUrl(
+          `${requesterLink ? '/requester' : ''}/service-orders/${serviceOrder.id}`,
+        ),
+        fields: [{ label: 'Comentado por', value: user.name }],
+      });
+      await this.mail.auditOperationalDelivery(
+        {
+          tenantId: user.tenantId,
+          actorId: user.id,
+          entity: 'ServiceOrder',
+          entityId: serviceOrder.id,
+          event,
+          recipient: recipient.email,
+        },
+        delivery,
+      );
+    }
   }
 }
