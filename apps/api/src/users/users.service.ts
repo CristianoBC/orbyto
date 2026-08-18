@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateOwnProfileDto } from './dto/update-own-profile.dto';
 
 const publicUserSelect = {
   id: true,
@@ -36,6 +37,38 @@ export class UsersService {
     const user = await this.prisma.user.findFirst({ where: { id, tenantId }, select: publicUserSelect });
     if (!user) throw new NotFoundException('Usuário não encontrado.');
     return user;
+  }
+
+  async updateMe(actor: AuthUser, dto: UpdateOwnProfileDto) {
+    const target = await this.prisma.user.findFirst({
+      where: { id: actor.id, tenantId: actor.tenantId },
+      select: { id: true },
+    });
+    if (!target) throw new NotFoundException('Usuário não encontrado.');
+
+    const updatedFields = Object.keys(dto);
+    return this.prisma.$transaction(async (transaction) => {
+      const updated = await transaction.user.update({
+        where: { id: target.id },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+          ...(dto.phone !== undefined ? { phone: this.cleanOptional(dto.phone) } : {}),
+          ...(dto.avatarUrl !== undefined ? { avatarUrl: this.cleanOptional(dto.avatarUrl) } : {}),
+        },
+        select: publicUserSelect,
+      });
+      await transaction.auditLog.create({
+        data: {
+          tenantId: actor.tenantId,
+          userId: actor.id,
+          action: AuditAction.UPDATE,
+          entity: 'User',
+          entityId: actor.id,
+          metadata: { operation: 'USER_PROFILE_UPDATED', updatedFields },
+        },
+      });
+      return updated;
+    });
   }
 
   findAllByTenant(tenantId: string) {

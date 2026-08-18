@@ -13,6 +13,7 @@ interface AuthContextValue {
   can(module: PermissionModule, action?: 'view' | 'create' | 'edit' | 'delete' | 'manage'): boolean;
   login(email: string, password: string): Promise<string | null>;
   passwordChanged(): Promise<string | null>;
+  refreshUser(): Promise<AuthUser>;
   homeRoute: string | null;
   logout(): void;
 }
@@ -57,6 +58,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return getHomeRoute(current.role, currentPermissions);
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const token = authStorage.getToken();
+    const current = await apiRequest<AuthUser>('/users/me');
+    if (token) authStorage.save(token, current);
+    setUser(current);
+    return current;
+  }, []);
+
   const logout = useCallback(() => { authStorage.clear(); setUser(null); setPermissions([]); window.location.assign('/login'); }, []);
   const can = useCallback((module: PermissionModule, action: 'view' | 'create' | 'edit' | 'delete' | 'manage' = 'view') => {
     const field = { view: 'canView', create: 'canCreate', edit: 'canEdit', delete: 'canDelete', manage: 'canManage' } as const;
@@ -65,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return Boolean(permissions.find((item) => item.module === module)?.[field[action]]);
   }, [permissions, user?.role]);
   const homeRoute = user ? (user.mustChangePassword ? '/change-password' : getHomeRoute(user.role, permissions)) : null;
-  const value = useMemo(() => ({ user, loading, permissions, can, login, passwordChanged, logout, homeRoute }), [user, loading, permissions, can, login, passwordChanged, logout, homeRoute]);
+  const value = useMemo(() => ({ user, loading, permissions, can, login, passwordChanged, refreshUser, logout, homeRoute }), [user, loading, permissions, can, login, passwordChanged, refreshUser, logout, homeRoute]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

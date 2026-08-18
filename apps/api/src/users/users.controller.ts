@@ -10,6 +10,7 @@ import { PermissionsGuard } from '../permissions/permissions.guard';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateOwnProfileDto } from './dto/update-own-profile.dto';
 import { UsersService } from './users.service';
 
 @Controller('users')
@@ -20,6 +21,11 @@ export class UsersController {
   @Get('me')
   me(@CurrentUser() user: AuthUser) {
     return this.usersService.findMe(user.id, user.tenantId);
+  }
+
+  @Patch('me')
+  updateMe(@CurrentUser() user: AuthUser, @Body() dto: UpdateOwnProfileDto) {
+    return this.usersService.updateMe(user, dto);
   }
 
   @Get()
