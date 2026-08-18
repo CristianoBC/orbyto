@@ -3,12 +3,17 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AuditAction, Prisma, UserRole, UserStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { createHash, randomBytes } from 'crypto';
 import type { AuthUser } from '../auth/auth.types';
+import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { InviteUserDto } from './dto/invite-user.dto';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateOwnProfileDto } from './dto/update-own-profile.dto';
@@ -25,13 +30,71 @@ const publicUserSelect = {
   lastLoginAt: true,
   emailVerifiedAt: true,
   mustChangePassword: true,
+  invitedAt: true,
+  inviteExpiresAt: true,
+  inviteAcceptedAt: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.UserSelect;
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly config: ConfigService, private readonly mail: MailService) {}
+
+  async invite(actor: AuthUser, dto: InviteUserDto) {
+    this.ensureInvitableRole(actor, dto.role);
+    const email = this.normalizeEmail(dto.email);
+    await this.ensureEmailAvailable(actor.tenantId, email);
+    const invitation = this.createInvitation();
+    const placeholderHash = await bcrypt.hash(randomBytes(32).toString('hex'), 12);
+    let created: { id: string; name: string; email: string; role: UserRole };
+    try {
+      created = await this.prisma.$transaction(async (transaction) => {
+        const user = await transaction.user.create({
+          data: {
+            tenantId: actor.tenantId,
+            name: dto.name.trim(),
+            email,
+            role: dto.role,
+            status: UserStatus.PENDING,
+            passwordHash: placeholderHash,
+            mustChangePassword: false,
+            phone: this.cleanOptional(dto.phone),
+            inviteTokenHash: invitation.tokenHash,
+            inviteExpiresAt: invitation.expiresAt,
+            invitedAt: new Date(),
+          },
+          select: publicUserSelect,
+        });
+        await transaction.auditLog.create({
+          data: { tenantId: actor.tenantId, userId: actor.id, action: AuditAction.CREATE, entity: 'User', entityId: user.id, metadata: { operation: 'USER_INVITED', email, role: dto.role, expiresAt: invitation.expiresAt } },
+        });
+        return user;
+      });
+    } catch (error) {
+      this.handleUniqueEmail(error);
+      throw error;
+    }
+    await this.deliverInvitation(actor, created, invitation.token, invitation.expiresAt, 'USER_INVITE_FAILED');
+    return { message: 'Usuário convidado com sucesso. O convite foi enviado por e-mail.', user: created };
+  }
+
+  async resendInvite(actor: AuthUser, id: string) {
+    const target = await this.prisma.user.findFirst({
+      where: { id, tenantId: actor.tenantId },
+      select: { id: true, name: true, email: true, role: true, status: true, inviteAcceptedAt: true },
+    });
+    if (!target) throw new NotFoundException('Usuário não encontrado.');
+    this.ensureActorCanManageTarget(actor, target.role);
+    if (target.status !== UserStatus.PENDING || target.inviteAcceptedAt) throw new ConflictException('Este usuário não possui um convite pendente.');
+    const invitation = this.createInvitation();
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: target.id }, data: { inviteTokenHash: invitation.tokenHash, inviteExpiresAt: invitation.expiresAt, invitedAt: new Date() } }),
+      this.prisma.auditLog.create({ data: { tenantId: actor.tenantId, userId: actor.id, action: AuditAction.UPDATE, entity: 'User', entityId: target.id, metadata: { operation: 'USER_INVITE_RESENT', expiresAt: invitation.expiresAt } } }),
+    ]);
+    await this.deliverInvitation(actor, target, invitation.token, invitation.expiresAt, 'USER_INVITE_FAILED');
+    return { message: 'Convite reenviado com sucesso.' };
+  }
 
   async findMe(id: string, tenantId: string) {
     const user = await this.prisma.user.findFirst({ where: { id, tenantId }, select: publicUserSelect });
@@ -201,6 +264,32 @@ export class UsersService {
     if (role === UserRole.OWNER && actor.role !== UserRole.OWNER) {
       throw new ForbiddenException('Somente proprietários podem atribuir o perfil Proprietário.');
     }
+  }
+
+  private ensureInvitableRole(actor: AuthUser, role: UserRole) {
+    if (role === UserRole.OWNER) throw new ForbiddenException('O perfil Proprietário não pode ser atribuído por convite.');
+    this.ensureCanAssignRole(actor, role);
+  }
+
+  private createInvitation() {
+    const token = randomBytes(32).toString('hex');
+    const expiresInHours = this.inviteExpiryHours();
+    return { token, tokenHash: createHash('sha256').update(token).digest('hex'), expiresAt: new Date(Date.now() + expiresInHours * 60 * 60 * 1000) };
+  }
+
+  private inviteExpiryHours() {
+    const configured = Number(this.config.get<string>('USER_INVITE_EXPIRES_HOURS') ?? 48);
+    return Number.isFinite(configured) && configured > 0 ? configured : 48;
+  }
+
+  private async deliverInvitation(actor: AuthUser, target: { id: string; name: string; email: string }, token: string, expiresAt: Date, failureOperation: string) {
+    const webUrl = (this.config.get<string>('APP_WEB_URL') ?? this.config.get<string>('WEB_URL') ?? 'http://localhost:3000').replace(/\/$/, '');
+    const inviteUrl = `${webUrl}/accept-invite?token=${encodeURIComponent(token)}`;
+    const delivery = await this.mail.sendUserInvitation({ to: target.email, name: target.name, inviteUrl, expiresInHours: this.inviteExpiryHours() });
+    if (delivery.sent) return;
+    await this.prisma.auditLog.create({ data: { tenantId: actor.tenantId, userId: actor.id, action: AuditAction.UPDATE, entity: 'User', entityId: target.id, metadata: { operation: failureOperation, reason: delivery.reason } } });
+    if ((this.config.get<string>('NODE_ENV') ?? 'development') !== 'production') console.warn(`[user-invite] E-mail não enviado (${delivery.reason}). Link de desenvolvimento: ${inviteUrl}`);
+    throw new ServiceUnavailableException('O usuário foi criado, mas não foi possível enviar o convite. Tente reenviar em instantes.');
   }
 
   private async ensureAnotherActiveOwner(tenantId: string, excludedId: string) {

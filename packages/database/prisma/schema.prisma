@@ -205,6 +205,10 @@ model User {
   passwordResetTokenHash String?
   passwordResetExpiresAt DateTime?
   passwordResetUsedAt    DateTime?
+  inviteTokenHash        String?
+  inviteExpiresAt        DateTime?
+  invitedAt              DateTime?
+  inviteAcceptedAt       DateTime?
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -230,6 +234,7 @@ model User {
   @@index([role])
   @@index([status])
   @@index([passwordResetTokenHash])
+  @@index([inviteTokenHash])
 }
 
 model RefreshToken {

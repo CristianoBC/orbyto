@@ -12,6 +12,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterRequesterDto } from './dto/register-requester.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { AcceptInviteDto } from './dto/accept-invite.dto';
 
 @Injectable()
 export class AuthService {
@@ -105,6 +106,42 @@ export class AuthService {
     if (!token) throw new BadRequestException('Token não informado.');
     const count = await this.prisma.user.count({ where: { passwordResetTokenHash: this.hashToken(token), passwordResetExpiresAt: { gt: new Date() }, passwordResetUsedAt: null } });
     return { valid: count === 1 };
+  }
+
+  async validateInviteToken(token: string) {
+    if (!token) throw new BadRequestException('Token não informado.');
+    const user = await this.prisma.user.findFirst({
+      where: { inviteTokenHash: this.hashToken(token) },
+      select: { name: true, email: true, role: true, status: true, inviteExpiresAt: true, inviteAcceptedAt: true },
+    });
+    if (!user) return { valid: false, reason: 'invalid' as const };
+    if (user.inviteAcceptedAt) return { valid: false, reason: 'used' as const };
+    if (!user.inviteExpiresAt || user.inviteExpiresAt <= new Date()) return { valid: false, reason: 'expired' as const };
+    if (user.status !== UserStatus.PENDING) return { valid: false, reason: 'invalid' as const };
+    return { valid: true, user: { name: user.name, email: user.email, role: user.role }, expiresAt: user.inviteExpiresAt };
+  }
+
+  async acceptInvite(dto: AcceptInviteDto) {
+    const tokenHash = this.hashToken(dto.token);
+    const user = await this.prisma.user.findFirst({
+      where: { inviteTokenHash: tokenHash },
+      select: { id: true, tenantId: true, status: true, inviteExpiresAt: true, inviteAcceptedAt: true },
+    });
+    if (!user) throw new BadRequestException('Convite inválido.');
+    if (user.inviteAcceptedAt) throw new BadRequestException('Este convite já foi utilizado.');
+    if (!user.inviteExpiresAt || user.inviteExpiresAt <= new Date()) throw new BadRequestException('Este convite expirou. Solicite um novo convite ao administrador.');
+    if (user.status !== UserStatus.PENDING) throw new BadRequestException('Este convite não está mais disponível.');
+    const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    const acceptedAt = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.user.updateMany({
+        where: { id: user.id, tenantId: user.tenantId, status: UserStatus.PENDING, inviteTokenHash: tokenHash, inviteAcceptedAt: null, inviteExpiresAt: { gt: acceptedAt } },
+        data: { passwordHash, status: UserStatus.ACTIVE, mustChangePassword: false, emailVerifiedAt: acceptedAt, inviteAcceptedAt: acceptedAt },
+      });
+      if (claimed.count !== 1) throw new BadRequestException('Este convite já foi utilizado ou expirou.');
+      await tx.auditLog.create({ data: { tenantId: user.tenantId, userId: user.id, action: AuditAction.UPDATE, entity: 'User', entityId: user.id, metadata: { operation: 'USER_INVITE_ACCEPTED' } } });
+    });
+    return { message: 'Convite aceito e senha definida com sucesso. Você já pode entrar no Orbyto.' };
   }
 
   async changePassword(actor: AuthUser, dto: ChangePasswordDto) {

@@ -8,6 +8,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { RegisterRequesterDto } from './dto/register-requester.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { AcceptInviteDto } from './dto/accept-invite.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -29,6 +30,12 @@ export class AuthController {
 
   @Get('validate-reset-token')
   validateResetToken(@Query('token') token: string) { return this.authService.validateResetToken(token); }
+
+  @Get('validate-invite-token')
+  validateInviteToken(@Query('token') token: string) { return this.authService.validateInviteToken(token); }
+
+  @Post('accept-invite')
+  acceptInvite(@Body() dto: AcceptInviteDto) { return this.authService.acceptInvite(dto); }
 
   @UseGuards(JwtAuthGuard)
   @Post('change-password')

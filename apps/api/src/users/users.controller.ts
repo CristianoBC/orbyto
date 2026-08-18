@@ -8,6 +8,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { RequirePermission } from '../permissions/permissions.decorator';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 import { CreateUserDto } from './dto/create-user.dto';
+import { InviteUserDto } from './dto/invite-user.dto';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateOwnProfileDto } from './dto/update-own-profile.dto';
@@ -50,6 +51,22 @@ export class UsersController {
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateUserDto) {
     return this.usersService.create(user, dto);
+  }
+
+  @Post('invite')
+  @UseGuards(RolesGuard, PermissionsGuard)
+  @RequirePermission(PermissionModule.USERS, 'create')
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  invite(@CurrentUser() user: AuthUser, @Body() dto: InviteUserDto) {
+    return this.usersService.invite(user, dto);
+  }
+
+  @Post(':id/resend-invite')
+  @UseGuards(RolesGuard, PermissionsGuard)
+  @RequirePermission(PermissionModule.USERS, 'create')
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  resendInvite(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.usersService.resendInvite(user, id);
   }
 
   @Patch(':id')

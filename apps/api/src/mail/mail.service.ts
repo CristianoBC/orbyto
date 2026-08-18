@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import nodemailer, { type Transporter } from 'nodemailer';
-import { passwordResetTemplate } from './mail.templates';
-import type { MailDeliveryResult, PasswordResetMail } from './mail.types';
+import { passwordResetTemplate, userInvitationTemplate } from './mail.templates';
+import type { MailDeliveryResult, PasswordResetMail, UserInvitationMail } from './mail.types';
 
 @Injectable()
 export class MailService {
@@ -41,6 +41,20 @@ export class MailService {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'erro desconhecido';
       this.logger.error(`Falha ao enviar e-mail de recuperação para ${this.maskEmail(input.to)}: ${message}`);
+      return { sent: false, reason: 'delivery_failed' };
+    }
+  }
+
+  async sendUserInvitation(input: UserInvitationMail): Promise<MailDeliveryResult> {
+    if (!this.transporter || !this.from) return { sent: false, reason: 'not_configured' };
+    const template = userInvitationTemplate(input.name, input.inviteUrl, input.expiresInHours);
+    try {
+      await this.transporter.sendMail({ from: this.from, to: input.to, ...template });
+      this.logger.log(`Convite de usuário enviado para ${this.maskEmail(input.to)}.`);
+      return { sent: true };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'erro desconhecido';
+      this.logger.error(`Falha ao enviar convite para ${this.maskEmail(input.to)}: ${message}`);
       return { sent: false, reason: 'delivery_failed' };
     }
   }

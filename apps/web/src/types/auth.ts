@@ -23,6 +23,9 @@ export interface User extends AuthUser {
   phone?: string | null;
   avatarUrl?: string | null;
   lastLoginAt?: string | null;
+  invitedAt?: string | null;
+  inviteExpiresAt?: string | null;
+  inviteAcceptedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
 }

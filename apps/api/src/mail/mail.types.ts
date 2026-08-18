@@ -8,3 +8,10 @@ export interface PasswordResetMail {
   resetUrl: string;
   expiresInMinutes: number;
 }
+
+export interface UserInvitationMail {
+  to: string;
+  name: string;
+  inviteUrl: string;
+  expiresInHours: number;
+}
