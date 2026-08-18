@@ -10,6 +10,12 @@ export const APP_ROUTES: readonly { path: string; module: PermissionModule }[] =
   { path: '/users', module: 'USERS' },
 ];
 
+export const REPORT_MODULES: readonly PermissionModule[] = ['SERVICE_ORDERS', 'PROJECTS', 'TASKS', 'DAILY_LOGS'];
+
+export function hasReportsAccess(role: UserRole | undefined, permissions: RolePermission[]) {
+  return role !== 'REQUESTER' && REPORT_MODULES.some((module) => hasPermission(role, permissions, module));
+}
+
 export function hasPermission(role: UserRole | undefined, permissions: RolePermission[], module: PermissionModule) {
   if (role === 'OWNER') return true;
   return Boolean(permissions.find((permission) => permission.module === module)?.canView);

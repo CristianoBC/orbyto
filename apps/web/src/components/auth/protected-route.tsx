@@ -4,14 +4,14 @@ import Image from 'next/image';
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
-import { getRequiredModule } from '@/lib/permissions';
+import { getRequiredModule, hasReportsAccess } from '@/lib/permissions';
 
 export function ProtectedRoute({ children, area = 'any' }: { children: React.ReactNode; area?: 'any' | 'admin' | 'requester' }) {
-  const { user, loading, can, logout, homeRoute } = useAuth();
+  const { user, loading, can, logout, homeRoute, permissions } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const required = getRequiredModule(pathname);
-  const wrongArea = !!user && ((area === 'admin' && (user.role === 'REQUESTER' || (required && !can(required)) || (pathname.startsWith('/permissions') && !can('USERS', 'manage')))) || (area === 'requester' && (user.role !== 'REQUESTER' || !can('REQUESTER_PORTAL'))));
+  const wrongArea = !!user && ((area === 'admin' && (user.role === 'REQUESTER' || (required && !can(required)) || (pathname.startsWith('/reports') && !hasReportsAccess(user.role, permissions)) || (pathname.startsWith('/permissions') && !can('USERS', 'manage')))) || (area === 'requester' && (user.role !== 'REQUESTER' || !can('REQUESTER_PORTAL'))));
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
   }, [loading, user, router]);
