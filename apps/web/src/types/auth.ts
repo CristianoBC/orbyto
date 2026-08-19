@@ -1,6 +1,6 @@
 export type UserRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'MEMBER' | 'REQUESTER' | 'VIEWER';
 export type UserStatus = 'PENDING' | 'ACTIVE' | 'INACTIVE' | 'BLOCKED';
-export type PermissionModule = 'DASHBOARD' | 'SERVICE_ORDERS' | 'PROJECTS' | 'TASKS' | 'KANBAN' | 'DAILY_LOGS' | 'SCHEDULE' | 'USERS' | 'REQUESTER_PORTAL' | 'SETTINGS';
+export type PermissionModule = 'DASHBOARD' | 'SERVICE_ORDERS' | 'PROJECTS' | 'TASKS' | 'KANBAN' | 'DAILY_LOGS' | 'SCHEDULE' | 'USERS' | 'REQUESTER_PORTAL' | 'SETTINGS' | 'LOOKUPS';
 export interface RolePermission { module: PermissionModule; canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean; canManage: boolean; }
 
 export interface AuthUser {

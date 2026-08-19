@@ -7,6 +7,7 @@ export interface Project {
   description?: string | null;
   department?: string | null;
   unit?: string | null;
+  type?: string | null;
   priority: Priority;
   status: ProjectStatus;
   owner?: { id: string; name: string; email: string; avatarUrl?: string | null } | null;
@@ -19,9 +20,9 @@ export interface Project {
   updatedAt?: string;
 }
 
-export type CreateProject = Pick<Project, 'name' | 'description' | 'department' | 'unit' | 'priority' | 'status'> & { startDate?: string | null; endDate?: string | null };
+export type CreateProject = Pick<Project, 'name' | 'description' | 'department' | 'unit' | 'type' | 'priority' | 'status'> & { startDate?: string | null; endDate?: string | null };
 
-export type UpdateProject = Pick<Project, 'name' | 'description' | 'department' | 'unit' | 'priority' | 'status' | 'tags'> & {
+export type UpdateProject = Pick<Project, 'name' | 'description' | 'department' | 'unit' | 'type' | 'priority' | 'status' | 'tags'> & {
   ownerId?: string;
   startDate?: string | null;
   endDate?: string | null;

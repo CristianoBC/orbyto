@@ -19,6 +19,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { ReportsModule } from './reports/reports.module';
 import { MailModule } from './mail/mail.module';
 import { SettingsModule } from './settings/settings.module';
+import { LookupsModule } from './lookups/lookups.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { SettingsModule } from './settings/settings.module';
     ScheduleModule.forRoot(),
     PrismaModule,
     SettingsModule,
+    LookupsModule,
     PermissionsModule,
     ProjectsModule,
     AuthModule,

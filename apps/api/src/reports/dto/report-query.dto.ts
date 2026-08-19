@@ -34,6 +34,7 @@ export class ServiceOrderReportQueryDto extends PeriodQueryDto {
   @IsOptional() @IsUUID() responsibleId?: string;
   @IsOptional() @IsString() @MaxLength(180) unit?: string;
   @IsOptional() @IsString() @MaxLength(180) category?: string;
+  @IsOptional() @IsString() @MaxLength(180) system?: string;
 }
 
 export class ProjectReportQueryDto extends PeriodQueryDto {

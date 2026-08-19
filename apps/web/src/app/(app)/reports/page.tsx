@@ -5,12 +5,14 @@ import { useAuth } from '@/contexts/auth-context';
 import { apiRequest } from '@/lib/api';
 import type { PermissionModule } from '@/types/auth';
 import type { DailyLogReportRow, ProjectReportRow, ServiceOrderReportRow, TaskReportRow } from '@/types/report';
+import { loadServiceOrderOptions } from '@/lib/lookups';
+import type { ServiceOrderLookupOptions } from '@/types/lookup';
 
 type ReportKey = 'service-orders' | 'projects' | 'tasks' | 'daily-logs';
 type Row = ServiceOrderReportRow | ProjectReportRow | TaskReportRow | DailyLogReportRow;
-type Filters = { dateFrom: string; dateTo: string; status: string; priority: string; projectId: string; requesterId: string; responsibleId: string; assigneeId: string; unit: string; category: string };
+type Filters = { dateFrom: string; dateTo: string; status: string; priority: string; projectId: string; requesterId: string; responsibleId: string; assigneeId: string; unit: string; category: string; system:string };
 type Column = { label: string; value(row: Row): string | number | null | undefined };
-const emptyFilters: Filters = { dateFrom: '', dateTo: '', status: '', priority: '', projectId: '', requesterId: '', responsibleId: '', assigneeId: '', unit: '', category: '' };
+const emptyFilters: Filters = { dateFrom: '', dateTo: '', status: '', priority: '', projectId: '', requesterId: '', responsibleId: '', assigneeId: '', unit: '', category: '', system:'' };
 const date = (value: string | null | undefined) => value ? new Intl.DateTimeFormat('pt-BR').format(new Date(value)) : '—';
 const labels: Record<string, string> = { OPEN: 'Aberta', IN_REVIEW: 'Em análise', IN_PROGRESS: 'Em andamento', WAITING_REQUESTER: 'Aguardando solicitante', COMPLETED: 'Concluído', CANCELED: 'Cancelado', PLANNED: 'Planejado', PAUSED: 'Pausado', TODO: 'A fazer', DOING: 'Em execução', DONE: 'Concluída', PENDING: 'Pendente', WAITING_RETURN: 'Aguardando retorno', LOW: 'Baixa', MEDIUM: 'Média', HIGH: 'Alta', CRITICAL: 'Crítica' };
 const deadlineLabels: Record<string, string> = { overdue: 'Vencida', dueSoon: 'Próxima do prazo', onTrack: 'No prazo', noDueDate: 'Sem prazo' };
@@ -61,13 +63,14 @@ export default function ReportsPage() {
   const [report, setReport] = useState<ReportKey>(available[0] ?? 'service-orders');
   const [filters, setFilters] = useState(emptyFilters); const [applied, setApplied] = useState(emptyFilters);
   const [rows, setRows] = useState<Row[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
+  const [lookupOptions,setLookupOptions]=useState<ServiceOrderLookupOptions>({units:[],categories:[],systems:[]});
   const columns = useMemo(() => columnsFor(report), [report]);
   const load = useCallback(async () => {
     if (!can(reportConfig[report].module)) return;
     setLoading(true); setError('');
     const query = new URLSearchParams();
     Object.entries(applied).forEach(([key, value]) => {
-      const relevant = ['dateFrom', 'dateTo', 'status'].includes(key) || (report !== 'daily-logs' && key === 'priority') || (report === 'service-orders' && ['unit', 'category', 'requesterId', 'responsibleId'].includes(key)) || (report === 'projects' && key === 'responsibleId') || (report === 'tasks' && ['projectId', 'assigneeId'].includes(key)) || (report === 'daily-logs' && ['projectId', 'responsibleId'].includes(key));
+      const relevant = ['dateFrom', 'dateTo', 'status'].includes(key) || (report !== 'daily-logs' && key === 'priority') || (report === 'service-orders' && ['unit', 'category', 'system', 'requesterId', 'responsibleId'].includes(key)) || (report === 'projects' && ['responsibleId','unit'].includes(key)) || (report === 'tasks' && ['projectId', 'assigneeId'].includes(key)) || (report === 'daily-logs' && ['projectId', 'responsibleId'].includes(key));
       if (value && relevant) query.set(key, key === 'dateTo' ? `${value}T23:59:59.999Z` : value);
     });
     try { setRows(await apiRequest<Row[]>(`/reports/${report}?${query}`)); }
@@ -75,6 +78,7 @@ export default function ReportsPage() {
     finally { setLoading(false); }
   }, [applied, can, report]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(()=>{void loadServiceOrderOptions().then(setLookupOptions).catch(()=>setLookupOptions({units:[],categories:[],systems:[]}))},[]);
   function changeReport(next: ReportKey) { setReport(next); setFilters(emptyFilters); setApplied(emptyFilters); setRows([]); }
   function submit(event: FormEvent) { event.preventDefault(); setApplied(filters); }
   function exportCsv() {
@@ -92,7 +96,7 @@ export default function ReportsPage() {
       <label>Período final<input type="date" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })} /></label>
       <label>Status<select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}><option value="">Todos</option>{statusOptions.map((item) => <option value={item} key={item}>{labels[item]}</option>)}</select></label>
       {report !== 'daily-logs' && <label>Prioridade<select value={filters.priority} onChange={(e) => setFilters({ ...filters, priority: e.target.value })}><option value="">Todas</option>{['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].map((item) => <option value={item} key={item}>{labels[item]}</option>)}</select></label>}
-      {report === 'service-orders' && <><label>Unidade<input value={filters.unit} onChange={(e) => setFilters({ ...filters, unit: e.target.value })} placeholder="Unidade exata" /></label><label>Categoria<input value={filters.category} onChange={(e) => setFilters({ ...filters, category: e.target.value })} placeholder="Categoria exata" /></label></>}
+      {(report === 'service-orders'||report==='projects')&&<ReportLookup label="Unidade" value={filters.unit} options={lookupOptions.units} set={unit=>setFilters({...filters,unit})}/>} {report==='service-orders'&&<><ReportLookup label="Categoria" value={filters.category} options={lookupOptions.categories} set={category=>setFilters({...filters,category})}/><ReportLookup label="Sistema/Processo" value={filters.system} options={lookupOptions.systems} set={system=>setFilters({...filters,system})}/></>}
       {report === 'service-orders' && <label>Solicitante<input value={filters.requesterId} onChange={(e) => setFilters({ ...filters, requesterId: e.target.value })} placeholder="ID do solicitante" /></label>}
       {(report === 'service-orders' || report === 'projects' || report === 'daily-logs') && <label>{report === 'daily-logs' ? 'Autor' : 'Responsável'}<input value={filters.responsibleId} onChange={(e) => setFilters({ ...filters, responsibleId: e.target.value })} placeholder={`ID do ${report === 'daily-logs' ? 'autor' : 'responsável'}`} /></label>}
       {report === 'tasks' && <label>Responsável<input value={filters.assigneeId} onChange={(e) => setFilters({ ...filters, assigneeId: e.target.value })} placeholder="ID do responsável" /></label>}
@@ -102,3 +106,5 @@ export default function ReportsPage() {
     {error ? <div className="alert error"><span>{error}</span><button onClick={() => void load()}>Tentar novamente</button></div> : loading ? <div className="report-state"><span className="spinner" />Carregando relatório...</div> : !rows.length ? <div className="report-state"><strong>Nenhum resultado encontrado</strong><span>Ajuste os filtros e tente novamente.</span></div> : <section className="report-card"><header><strong>{rows.length} registro(s)</strong><span>Os dados exibidos respeitam seu perfil e suas permissões.</span></header><div className="report-table-wrap"><table><thead><tr>{columns.map((column) => <th key={column.label}>{column.label}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={row.id}>{columns.map((column) => <td key={column.label}>{column.value(row)}</td>)}</tr>)}</tbody></table></div></section>}
   </>;
 }
+
+function ReportLookup({label,value,options,set}:{label:string;value:string;options:{id:string;name:string}[];set(value:string):void}){return <label>{label}{options.length?<select value={value} onChange={e=>set(e.target.value)}><option value="">Todos</option>{options.map(item=><option value={item.name} key={item.id}>{item.name}</option>)}</select>:<input value={value} onChange={e=>set(e.target.value)} placeholder={`${label} exato`}/>}</label>}

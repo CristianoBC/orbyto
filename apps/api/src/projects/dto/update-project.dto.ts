@@ -45,6 +45,11 @@ export class UpdateProjectDto {
   unit?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  type?: string;
+
+  @IsOptional()
   @IsEnum(Priority)
   priority?: Priority;
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { labels } from "@/components/ui/page-state";
@@ -10,6 +10,8 @@ import type {
   Priority,
   ServiceOrder,
 } from "@/types/service-order";
+import { emptyServiceOrderOptions, loadServiceOrderOptions } from "@/lib/lookups";
+import type { LookupItem, ServiceOrderLookupOptions } from "@/types/lookup";
 
 const initial: CreateServiceOrder = {
   title: "",
@@ -28,6 +30,8 @@ export default function NewRequesterServiceOrderPage() {
   const [form, setForm] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [options, setOptions] = useState<ServiceOrderLookupOptions>(emptyServiceOrderOptions);
+  useEffect(()=>{void loadServiceOrderOptions().then(setOptions).catch(()=>setOptions(emptyServiceOrderOptions))},[]);
   async function submit(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
@@ -99,30 +103,9 @@ export default function NewRequesterServiceOrderPage() {
             placeholder="Descreva o problema, quando começou e o resultado esperado"
           />
         </label>
-        <label>
-          Categoria
-          <input
-            value={form.category ?? ""}
-            onChange={(e) => setForm({ ...form, category: e.target.value })}
-            placeholder="Ex.: Acesso, equipamento, dúvida"
-          />
-        </label>
-        <label>
-          Sistema ou processo relacionado
-          <input
-            value={form.system ?? ""}
-            onChange={(e) => setForm({ ...form, system: e.target.value })}
-            placeholder="Ex.: ERP, e-mail, compras"
-          />
-        </label>
-        <label>
-          Unidade ou setor
-          <input
-            value={form.unit ?? ""}
-            onChange={(e) => setForm({ ...form, unit: e.target.value })}
-            placeholder="Informe sua área"
-          />
-        </label>
+        <OptionField label="Categoria" value={form.category??""} options={options.categories} placeholder="Ex.: Acesso, equipamento, dúvida" set={category=>setForm({...form,category})}/>
+        <OptionField label="Sistema ou processo relacionado" value={form.system??""} options={options.systems} placeholder="Ex.: ERP, e-mail, compras" set={system=>setForm({...form,system})}/>
+        <OptionField label="Unidade" value={form.unit??""} options={options.units} placeholder="Informe sua unidade" set={unit=>setForm({...form,unit})}/>
         <label>
           Prazo sugerido
           <input
@@ -166,4 +149,8 @@ export default function NewRequesterServiceOrderPage() {
       </form>
     </div>
   );
+}
+
+function OptionField({label,value,options,placeholder,set}:{label:string;value:string;options:LookupItem[];placeholder:string;set(value:string):void}){
+  return <label>{label}{options.length?<select value={value} onChange={event=>set(event.target.value)}><option value="">Selecione</option>{options.map(option=><option value={option.name} key={option.id}>{option.name}</option>)}</select>:<><input value={value} onChange={event=>set(event.target.value)} placeholder={placeholder}/><small className="field-help">Nenhuma opção cadastrada; informe livremente.</small></>}</label>;
 }

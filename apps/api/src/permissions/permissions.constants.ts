@@ -6,7 +6,7 @@ export const permissionModules = Object.values(PermissionModule);
 
 export function defaultEnabled(role: UserRole, module: PermissionModule) {
   if (role === UserRole.OWNER || role === UserRole.ADMIN) return module !== PermissionModule.REQUESTER_PORTAL;
-  if (role === UserRole.MANAGER) return module !== PermissionModule.REQUESTER_PORTAL && module !== PermissionModule.USERS && module !== PermissionModule.SETTINGS;
+  if (role === UserRole.MANAGER) return module !== PermissionModule.REQUESTER_PORTAL && module !== PermissionModule.USERS && module !== PermissionModule.SETTINGS && module !== PermissionModule.LOOKUPS;
   if (role === UserRole.MEMBER) return ([PermissionModule.DASHBOARD, PermissionModule.PROJECTS, PermissionModule.TASKS, PermissionModule.KANBAN, PermissionModule.DAILY_LOGS, PermissionModule.SCHEDULE] as PermissionModule[]).includes(module);
   return role === UserRole.REQUESTER && module === PermissionModule.REQUESTER_PORTAL;
 }

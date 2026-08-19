@@ -9,8 +9,10 @@ import { Modal } from '@/components/ui/modal';
 import { Field, FormActions, PageHeader, SelectPriority } from '@/components/ui/forms';
 import { useAuth } from '@/contexts/auth-context';
 import { projectDeadline } from '@/lib/deadline';
+import { loadActiveLookups } from '@/lib/lookups';
+import type { LookupItem } from '@/types/lookup';
 
-const initial: CreateProject = { name: '', description: '', department: '', unit: '', priority: 'MEDIUM', status: 'PLANNED', startDate: '', endDate: '' };
+const initial: CreateProject = { name: '', description: '', department: '', unit: '', type: '', priority: 'MEDIUM', status: 'PLANNED', startDate: '', endDate: '' };
 const statuses: ProjectStatus[] = ['PLANNED', 'IN_PROGRESS', 'PAUSED', 'COMPLETED', 'CANCELED'];
 const toIso = (date?: string) => date ? new Date(`${date}T12:00:00`).toISOString() : undefined;
 
@@ -24,8 +26,10 @@ export default function ProjectsPage() {
   const [form, setForm] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [units,setUnits]=useState<LookupItem[]>([]),[projectTypes,setProjectTypes]=useState<LookupItem[]>([]);
   const load = useCallback(async () => { setLoading(true); setError(''); try { setItems(await apiRequest<Project[]>(user?.role === 'VIEWER' ? '/projects' : '/projects/my')); } catch (e) { setError(e instanceof Error ? e.message : 'Erro ao carregar.'); } finally { setLoading(false); } }, [user?.role]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(()=>{if(!can('LOOKUPS'))return;void Promise.all([loadActiveLookups('UNIT'),loadActiveLookups('PROJECT_TYPE')]).then(([unitRows,typeRows])=>{setUnits(unitRows);setProjectTypes(typeRows)}).catch(()=>{setUnits([]);setProjectTypes([])})},[can]);
 
   async function submit(event: FormEvent) {
     event.preventDefault(); setSaving(true); setFormError('');
@@ -49,7 +53,8 @@ export default function ProjectsPage() {
       <Field label="Nome" value={form.name} set={(name) => setForm({ ...form, name })} required span />
       <Field label="Descrição" value={form.description ?? ''} set={(description) => setForm({ ...form, description })} textarea span />
       <Field label="Departamento" value={form.department ?? ''} set={(department) => setForm({ ...form, department })} />
-      <Field label="Unidade" value={form.unit ?? ''} set={(unit) => setForm({ ...form, unit })} />
+      {units.length?<label>Unidade<select value={form.unit??''} onChange={e=>setForm({...form,unit:e.target.value})}><option value="">Selecione</option>{units.map(item=><option value={item.name} key={item.id}>{item.name}</option>)}</select></label>:<Field label="Unidade" value={form.unit ?? ''} set={(unit) => setForm({ ...form, unit })} />}
+      {projectTypes.length?<label>Tipo de projeto<select value={form.type??''} onChange={e=>setForm({...form,type:e.target.value})}><option value="">Selecione</option>{projectTypes.map(item=><option value={item.name} key={item.id}>{item.name}</option>)}</select></label>:<Field label="Tipo de projeto" value={form.type??''} set={(type) => setForm({...form,type})}/>}
       <label>Data de início<input type="date" value={form.startDate ?? ''} onChange={(e) => setForm({ ...form, startDate: e.target.value })} /></label>
       <label>Prazo previsto<input type="date" min={form.startDate || undefined} value={form.endDate ?? ''} onChange={(e) => setForm({ ...form, endDate: e.target.value })} /></label>
       <SelectPriority value={form.priority} set={(priority) => setForm({ ...form, priority })} />

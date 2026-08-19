@@ -133,6 +133,22 @@ enum PermissionModule {
   USERS
   REQUESTER_PORTAL
   SETTINGS
+  LOOKUPS
+}
+
+enum LookupType {
+  UNIT
+  DEPARTMENT
+  SERVICE_ORDER_CATEGORY
+  SYSTEM_PROCESS
+  PROJECT_TYPE
+  CANCELLATION_REASON
+}
+
+enum LookupRelatedModule {
+  SERVICE_ORDER
+  PROJECT
+  TASK
 }
 
 enum NotificationType {
@@ -176,6 +192,7 @@ model Tenant {
   rolePermissions   RolePermission[]
   notifications     Notification[]
   settings          TenantSettings?
+  lookupItems       LookupItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -203,6 +220,29 @@ model TenantSettings {
   updatedAt                        DateTime @updatedAt
 
   @@index([tenantId])
+}
+
+model LookupItem {
+  id            String               @id @default(uuid())
+  tenantId      String
+  type          LookupType
+  name          String
+  normalizedName String
+  code          String?
+  description   String?
+  parentId      String?
+  relatedModule LookupRelatedModule?
+  isActive      Boolean              @default(true)
+  sortOrder     Int?
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent        LookupItem?          @relation("LookupHierarchy", fields: [parentId], references: [id])
+  children      LookupItem[]         @relation("LookupHierarchy")
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@unique([tenantId, type, normalizedName])
+  @@index([tenantId, type, isActive])
+  @@index([tenantId, parentId])
 }
 
 // ======================================================
@@ -291,6 +331,7 @@ model Project {
   description String?
   area        String?
   unit        String?
+  type        String?
   tags        String?
 
   priority Priority      @default(MEDIUM)

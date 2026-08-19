@@ -11,6 +11,7 @@ const moduleLabels: Record<PermissionModule, string> = {
   KANBAN: 'Kanban', DAILY_LOGS: 'Registros Diários', SCHEDULE: 'Cronograma', USERS: 'Usuários',
   REQUESTER_PORTAL: 'Portal do Solicitante',
   SETTINGS: 'Configurações',
+  LOOKUPS: 'Cadastros Auxiliares',
 };
 const allAdminModules = Object.keys(moduleLabels).filter((module) => module !== 'REQUESTER_PORTAL') as PermissionModule[];
 const formatDateTime = (value?: string | null, empty = 'Nunca acessou') => value

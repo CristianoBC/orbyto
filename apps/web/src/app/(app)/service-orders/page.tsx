@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/page-state";
 import { Modal } from "@/components/ui/modal";
 import { serviceOrderDeadline } from "@/lib/deadline";
+import { emptyServiceOrderOptions, loadServiceOrderOptions } from "@/lib/lookups";
+import type { ServiceOrderLookupOptions } from "@/types/lookup";
 import {
   Field,
   FormActions,
@@ -42,6 +44,7 @@ export default function ServiceOrdersPage() {
   const [form, setForm] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
+  const [lookupOptions, setLookupOptions] = useState<ServiceOrderLookupOptions>(emptyServiceOrderOptions);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -63,6 +66,7 @@ export default function ServiceOrdersPage() {
   useEffect(() => {
     if (!authLoading && user) void load();
   }, [authLoading, user, load]);
+  useEffect(() => { if (!authLoading && user) void loadServiceOrderOptions().then(setLookupOptions).catch(() => setLookupOptions(emptyServiceOrderOptions)); }, [authLoading, user]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -175,21 +179,9 @@ export default function ServiceOrdersPage() {
               textarea
               span
             />
-            <Field
-              label="Categoria"
-              value={form.category ?? ""}
-              set={(category) => setForm({ ...form, category })}
-            />
-            <Field
-              label="Sistema"
-              value={form.system ?? ""}
-              set={(system) => setForm({ ...form, system })}
-            />
-            <Field
-              label="Unidade"
-              value={form.unit ?? ""}
-              set={(unit) => setForm({ ...form, unit })}
-            />
+            <LookupField label="Categoria" value={form.category??""} options={lookupOptions.categories} set={category=>setForm({...form,category})}/>
+            <LookupField label="Sistema" value={form.system??""} options={lookupOptions.systems} set={system=>setForm({...form,system})}/>
+            <LookupField label="Unidade" value={form.unit??""} options={lookupOptions.units} set={unit=>setForm({...form,unit})}/>
             <label>
               Prazo previsto
               <input
@@ -210,4 +202,8 @@ export default function ServiceOrdersPage() {
       )}
     </>
   );
+}
+
+function LookupField({label,value,options,set}:{label:string;value:string;options:{id:string;name:string}[];set(value:string):void}) {
+  return options.length ? <label>{label}<select value={value} onChange={event=>set(event.target.value)}><option value="">Selecione</option>{options.map(option=><option key={option.id} value={option.name}>{option.name}</option>)}</select></label> : <Field label={label} value={value} set={set}/>;
 }

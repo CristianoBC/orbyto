@@ -36,6 +36,7 @@ export class ReportsService {
             responsibleId: query.responsibleId,
             unit: query.unit,
             category: query.category,
+            system: query.system,
             createdAt: this.period(query.dateFrom, query.dateTo),
           },
         ],
