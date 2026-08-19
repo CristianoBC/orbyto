@@ -22,6 +22,9 @@ export class AuthController {
   @Post('register-requester')
   registerRequester(@Body() dto: RegisterRequesterDto) { return this.authService.registerRequester(dto); }
 
+  @Get('requester-registration-settings')
+  requesterRegistrationSettings() { return this.authService.requesterRegistrationSettings(); }
+
   @Post('forgot-password')
   forgotPassword(@Body() dto: ForgotPasswordDto) { return this.authService.forgotPassword(dto); }
 

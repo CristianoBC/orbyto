@@ -293,6 +293,7 @@ export class AttachmentsService implements OnModuleInit {
     )) {
       const requesterLink = recipient.id === serviceOrder.requesterId;
       const delivery = await this.mail.sendServiceOrderAttachmentEmail({
+        tenantId: user.tenantId,
         to: recipient.email,
         recipientName: recipient.name,
         title: serviceOrder.title,

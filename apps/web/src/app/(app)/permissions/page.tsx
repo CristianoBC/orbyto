@@ -9,7 +9,7 @@ import type { RolePermission, UserRole } from '@/types/auth';
 
 type MatrixRow = { role: UserRole; permissions: RolePermission[] };
 type PermissionField = keyof Pick<RolePermission, 'canView' | 'canCreate' | 'canEdit' | 'canDelete' | 'canManage'>;
-const moduleLabels: Record<RolePermission['module'], string> = { DASHBOARD: 'Dashboard', SERVICE_ORDERS: 'Ordens de Serviço', PROJECTS: 'Projetos', TASKS: 'Tarefas', KANBAN: 'Kanban', DAILY_LOGS: 'Registros Diários', SCHEDULE: 'Cronograma', USERS: 'Usuários', REQUESTER_PORTAL: 'Portal do Solicitante' };
+const moduleLabels: Record<RolePermission['module'], string> = { DASHBOARD: 'Dashboard', SERVICE_ORDERS: 'Ordens de Serviço', PROJECTS: 'Projetos', TASKS: 'Tarefas', KANBAN: 'Kanban', DAILY_LOGS: 'Registros Diários', SCHEDULE: 'Cronograma', USERS: 'Usuários', REQUESTER_PORTAL: 'Portal do Solicitante', SETTINGS: 'Configurações' };
 const actions: readonly [PermissionField, string][] = [['canView', 'Ver'], ['canCreate', 'Criar'], ['canEdit', 'Editar'], ['canDelete', 'Excluir'], ['canManage', 'Gerenciar']];
 
 export default function PermissionsPage() {

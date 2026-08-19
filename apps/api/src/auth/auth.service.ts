@@ -13,10 +13,11 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterRequesterDto } from './dto/register-requester.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
+import { SettingsService } from '../settings/settings.service';
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService, private readonly jwtService: JwtService, private readonly config: ConfigService, private readonly mail: MailService) {}
+  constructor(private readonly prisma: PrismaService, private readonly jwtService: JwtService, private readonly config: ConfigService, private readonly mail: MailService, private readonly settings: SettingsService) {}
 
   async login(dto: LoginDto) {
     const email = this.normalizeEmail(dto.email);
@@ -37,8 +38,10 @@ export class AuthService {
 
   async registerRequester(dto: RegisterRequesterDto) {
     const email = this.normalizeEmail(dto.email);
-    this.ensureInstitutionalEmail(email);
     const tenant = await this.getDefaultTenant();
+    const settings = await this.settings.getOrCreateSettingsForTenant(tenant.id);
+    if (!settings.requesterSelfRegistrationEnabled) throw new BadRequestException('O autocadastro está temporariamente desativado. Solicite acesso ao administrador do ambiente.');
+    this.ensureInstitutionalEmail(email, settings.allowedEmailDomain);
     const existing = await this.prisma.user.findFirst({ where: { tenantId: tenant.id, email }, select: { id: true } });
     if (existing) throw new ConflictException('Já existe uma conta com este e-mail. Use a recuperação de senha para acessar.');
     const passwordHash = await bcrypt.hash(dto.password, 12);
@@ -162,8 +165,13 @@ export class AuthService {
     if (!tenant) throw new NotFoundException('O ambiente de autocadastro não está disponível.');
     return tenant;
   }
-  private ensureInstitutionalEmail(email: string) {
-    const domain = (this.config.get<string>('AUTH_ALLOWED_EMAIL_DOMAIN') ?? 'colsan.org.br').toLowerCase().replace(/^@/, '');
+  async requesterRegistrationSettings() {
+    const tenant = await this.getDefaultTenant();
+    const settings = await this.settings.getOrCreateSettingsForTenant(tenant.id);
+    return { enabled: settings.requesterSelfRegistrationEnabled, allowedEmailDomain: settings.allowedEmailDomain ?? (this.config.get<string>('AUTH_ALLOWED_EMAIL_DOMAIN') ?? 'colsan.org.br').toLowerCase().replace(/^@/, ''), environmentName: settings.environmentName, institutionName: settings.institutionName };
+  }
+  private ensureInstitutionalEmail(email: string, configuredDomain?: string | null) {
+    const domain = (configuredDomain ?? this.config.get<string>('AUTH_ALLOWED_EMAIL_DOMAIN') ?? 'colsan.org.br').toLowerCase().replace(/^@/, '');
     if (!email.endsWith(`@${domain}`)) throw new BadRequestException(`Use seu e-mail institucional @${domain}.`);
   }
   private normalizeEmail(email: string) { return email.trim().toLowerCase(); }

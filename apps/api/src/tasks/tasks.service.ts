@@ -21,6 +21,7 @@ import { getDeadlineInfo } from '../common/deadline';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { ListTasksQueryDto } from './dto/list-tasks-query.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import { SettingsService } from '../settings/settings.service';
 
 const taskInclude = {
   project: { select: { id: true, title: true, ownerId: true, status: true } },
@@ -43,11 +44,13 @@ export class TasksService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly mail: MailService,
+    private readonly settings: SettingsService,
   ) {}
 
   async create(user: AuthUser, dto: CreateTaskDto) {
     this.ensureSupportedFields(dto);
     const project = await this.findProject(dto.projectId, user.tenantId);
+    const tenantSettings = await this.settings.getOrCreateSettingsForTenant(user.tenantId);
 
     if (
       !administrativeRoles.includes(user.role) &&
@@ -72,7 +75,7 @@ export class TasksService {
           assigneeId: dto.assigneeId,
           priority: dto.priority ?? Priority.MEDIUM,
           status: dto.status ?? TaskStatus.TODO,
-          dueDate: dto.dueDate,
+          dueDate: dto.dueDate ?? this.defaultDueDate(tenantSettings.defaultTaskDeadlineDays),
         },
         include: taskInclude,
       });
@@ -144,6 +147,8 @@ export class TasksService {
       );
     return this.toTaskResponse(created);
   }
+
+  private defaultDueDate(days: number | null) { return days ? new Date(Date.now() + days * 86_400_000) : undefined; }
 
   async findMy(user: AuthUser, query: ListTasksQueryDto) {
     const tasks = await this.prisma.task.findMany({
@@ -412,6 +417,7 @@ export class TasksService {
     );
     if (!recipient) return;
     const delivery = await this.mail.sendTaskAssignedEmail({
+      tenantId: user.tenantId,
       to: recipient.email,
       recipientName: recipient.name,
       title: task.title,
@@ -468,6 +474,7 @@ export class TasksService {
             ];
       const delivery = await this.mail.sendTaskUpdatedEmail(
         {
+          tenantId: user.tenantId,
           to: recipient.email,
           recipientName: recipient.name,
           title: task.title,

@@ -132,6 +132,7 @@ enum PermissionModule {
   SCHEDULE
   USERS
   REQUESTER_PORTAL
+  SETTINGS
 }
 
 enum NotificationType {
@@ -174,12 +175,34 @@ model Tenant {
   auditLogs         AuditLog[]
   rolePermissions   RolePermission[]
   notifications     Notification[]
+  settings          TenantSettings?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([status])
   @@index([plan])
+}
+
+model TenantSettings {
+  id                               String   @id @default(uuid())
+  tenantId                         String   @unique
+  environmentName                  String?
+  institutionName                  String?
+  environmentDescription           String?
+  allowedEmailDomain               String?
+  requesterSelfRegistrationEnabled Boolean  @default(true)
+  internalNotificationsEnabled     Boolean  @default(true)
+  operationalEmailsEnabled         Boolean  @default(true)
+  deadlineAlertsEnabled            Boolean  @default(true)
+  defaultServiceOrderDeadlineDays  Int?
+  defaultTaskDeadlineDays          Int?
+  defaultProjectDeadlineDays       Int?
+  tenant                           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @updatedAt
+
+  @@index([tenantId])
 }
 
 // ======================================================

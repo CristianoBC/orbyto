@@ -10,6 +10,7 @@ const moduleLabels: Record<PermissionModule, string> = {
   DASHBOARD: 'Dashboard', SERVICE_ORDERS: 'Ordens de Serviço', PROJECTS: 'Projetos', TASKS: 'Tarefas',
   KANBAN: 'Kanban', DAILY_LOGS: 'Registros Diários', SCHEDULE: 'Cronograma', USERS: 'Usuários',
   REQUESTER_PORTAL: 'Portal do Solicitante',
+  SETTINGS: 'Configurações',
 };
 const allAdminModules = Object.keys(moduleLabels).filter((module) => module !== 'REQUESTER_PORTAL') as PermissionModule[];
 const formatDateTime = (value?: string | null, empty = 'Nunca acessou') => value

@@ -11,6 +11,7 @@ import type { AuthUser } from '../auth/auth.types';
 import { PermissionsService } from '../permissions/permissions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListNotificationsQueryDto } from './dto/list-notifications-query.dto';
+import { SettingsService } from '../settings/settings.service';
 
 type NotificationDb = PrismaService | Prisma.TransactionClient;
 type CreateNotification = {
@@ -28,6 +29,7 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly permissions: PermissionsService,
+    private readonly settings: SettingsService,
   ) {}
 
   async findAll(user: AuthUser, query: ListNotificationsQueryDto) {
@@ -73,19 +75,23 @@ export class NotificationsService {
     return { updated: result.count };
   }
 
-  createForUser(data: CreateNotification, db: NotificationDb = this.prisma) {
+  async createForUser(data: CreateNotification, db: NotificationDb = this.prisma) {
+    const settings = await this.settings.getOrCreateSettingsForTenant(data.tenantId);
+    if (!settings.internalNotificationsEnabled) return null;
     return db.notification.create({
       data: { ...data, type: data.type ?? NotificationType.INFO },
     });
   }
 
-  createForUsers(
+  async createForUsers(
     userIds: string[],
     data: Omit<CreateNotification, 'userId'>,
     db: NotificationDb = this.prisma,
   ) {
     const uniqueIds = [...new Set(userIds)];
-    if (!uniqueIds.length) return Promise.resolve({ count: 0 });
+    if (!uniqueIds.length) return { count: 0 };
+    const settings = await this.settings.getOrCreateSettingsForTenant(data.tenantId);
+    if (!settings.internalNotificationsEnabled) return { count: 0 };
     return db.notification.createMany({
       data: uniqueIds.map((userId) => ({
         ...data,

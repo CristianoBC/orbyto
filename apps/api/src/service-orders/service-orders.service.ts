@@ -20,6 +20,7 @@ import { getDeadlineInfo } from '../common/deadline';
 import { CreateServiceOrderDto } from './dto/create-service-order.dto';
 import { ListServiceOrdersQueryDto } from './dto/list-service-orders-query.dto';
 import { UpdateServiceOrderDto } from './dto/update-service-order.dto';
+import { SettingsService } from '../settings/settings.service';
 
 const serviceOrderInclude = {
   requester: { select: { id: true, name: true, email: true } },
@@ -38,9 +39,12 @@ export class ServiceOrdersService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly mail: MailService,
+    private readonly settings: SettingsService,
   ) {}
 
   async create(user: AuthUser, dto: CreateServiceOrderDto) {
+    const tenantSettings = await this.settings.getOrCreateSettingsForTenant(user.tenantId);
+    const dueDate = dto.dueDate ?? this.defaultDueDate(tenantSettings.defaultServiceOrderDeadlineDays);
     const recipients =
       user.role === UserRole.REQUESTER
         ? await this.notifications.serviceOrderStaffRecipientIds(
@@ -56,6 +60,7 @@ export class ServiceOrdersService {
           requesterId: user.id,
           status: ServiceOrderStatus.OPEN,
           priority: dto.priority ?? Priority.MEDIUM,
+          dueDate,
         },
         include: serviceOrderInclude,
       });
@@ -122,6 +127,8 @@ export class ServiceOrdersService {
       ).catch(() => undefined);
     return created;
   }
+
+  private defaultDueDate(days: number | null) { return days ? new Date(Date.now() + days * 86_400_000) : undefined; }
 
   findMy(user: AuthUser, query: ListServiceOrdersQueryDto) {
     return this.prisma.serviceOrder.findMany({
@@ -311,6 +318,7 @@ export class ServiceOrdersService {
       if (recipient) {
         const delivery = await this.mail.sendServiceOrderUpdatedEmail(
           {
+            tenantId: user.tenantId,
             to: recipient.email,
             recipientName: recipient.name,
             title: updated.title,
@@ -375,6 +383,7 @@ export class ServiceOrdersService {
     );
     for (const recipient of recipients) {
       const delivery = await this.mail.sendServiceOrderCreatedEmail({
+        tenantId: user.tenantId,
         to: recipient.email,
         recipientName: recipient.name,
         title: serviceOrder.title,

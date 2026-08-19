@@ -19,6 +19,7 @@ export interface UserInvitationMail {
 export type OperationalEntity = 'ServiceOrder' | 'Task' | 'Project';
 
 export interface OperationalMailBase {
+  tenantId?: string;
   to: string;
   recipientName?: string | null;
   title: string;
@@ -43,6 +44,7 @@ export interface DeadlineAlertMailItem {
 }
 
 export interface DeadlineAlertSummaryMail {
+  tenantId: string;
   to: string;
   recipientName?: string | null;
   overdue: DeadlineAlertMailItem[];

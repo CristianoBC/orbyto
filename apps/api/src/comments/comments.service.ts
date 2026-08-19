@@ -180,6 +180,7 @@ export class CommentsService {
     )) {
       const requesterLink = recipient.id === serviceOrder.requesterId;
       const delivery = await this.mail.sendServiceOrderCommentEmail({
+        tenantId: user.tenantId,
         to: recipient.email,
         recipientName: recipient.name,
         title: serviceOrder.title,

@@ -8,6 +8,7 @@ export const APP_ROUTES: readonly { path: string; module: PermissionModule }[] =
   { path: '/schedule', module: 'SCHEDULE' },
   { path: '/daily-logs', module: 'DAILY_LOGS' },
   { path: '/users', module: 'USERS' },
+  { path: '/settings', module: 'SETTINGS' },
 ];
 
 export const REPORT_MODULES: readonly PermissionModule[] = ['SERVICE_ORDERS', 'PROJECTS', 'TASKS', 'DAILY_LOGS'];

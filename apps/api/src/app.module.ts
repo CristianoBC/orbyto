@@ -18,6 +18,7 @@ import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReportsModule } from './reports/reports.module';
 import { MailModule } from './mail/mail.module';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { MailModule } from './mail/mail.module';
     }),
     ScheduleModule.forRoot(),
     PrismaModule,
+    SettingsModule,
     PermissionsModule,
     ProjectsModule,
     AuthModule,

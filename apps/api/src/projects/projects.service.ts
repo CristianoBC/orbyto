@@ -22,6 +22,7 @@ import { getDeadlineInfo } from '../common/deadline';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { ListProjectsQueryDto } from './dto/list-projects-query.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
+import { SettingsService } from '../settings/settings.service';
 
 const ownerSelect = {
   id: true,
@@ -60,11 +61,13 @@ export class ProjectsService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly mail: MailService,
+    private readonly settings: SettingsService,
   ) {}
 
   async create(user: AuthUser, dto: CreateProjectDto) {
     this.ensureSupportedFields(dto);
     const ownerId = dto.ownerId ?? user.id;
+    const tenantSettings = await this.settings.getOrCreateSettingsForTenant(user.tenantId);
 
     if (ownerId !== user.id && !administrativeRoles.includes(user.role)) {
       throw new ForbiddenException(
@@ -86,7 +89,7 @@ export class ProjectsService {
           priority: dto.priority ?? Priority.MEDIUM,
           status: dto.status ?? ProjectStatus.PLANNED,
           startDate: dto.startDate,
-          dueDate: dto.endDate,
+          dueDate: dto.endDate ?? this.defaultDueDate(tenantSettings.defaultProjectDeadlineDays),
           tags: this.serializeTags(dto.tags),
         },
         include: projectInclude,
@@ -142,6 +145,8 @@ export class ProjectsService {
 
     return this.toProjectResponse(project);
   }
+
+  private defaultDueDate(days: number | null) { return days ? new Date(Date.now() + days * 86_400_000) : undefined; }
 
   async findMy(user: AuthUser, query: ListProjectsQueryDto) {
     const projects = await this.prisma.project.findMany({
@@ -353,6 +358,7 @@ export class ProjectsService {
     );
     if (!recipient) return;
     const input = {
+      tenantId: user.tenantId,
       to: recipient.email,
       recipientName: recipient.name,
       title: project.title,

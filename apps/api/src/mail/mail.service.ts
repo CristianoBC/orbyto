@@ -17,6 +17,7 @@ import type {
   PasswordResetMail,
   UserInvitationMail,
 } from './mail.types';
+import { SettingsService } from '../settings/settings.service';
 
 @Injectable()
 export class MailService {
@@ -27,6 +28,7 @@ export class MailService {
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly settings: SettingsService,
   ) {
     const host = config.get<string>('SMTP_HOST')?.trim();
     const address = config.get<string>('MAIL_FROM_ADDRESS')?.trim();
@@ -225,7 +227,7 @@ export class MailService {
   async sendDeadlineAlertSummaryEmail(
     input: DeadlineAlertSummaryMail,
   ): Promise<MailDeliveryResult> {
-    if (!this.operationalEnabled('deadline'))
+    if (!(await this.operationalEnabled('deadline', input.tenantId)))
       return { sent: false, reason: 'disabled' };
     if (!this.transporter || !this.from)
       return { sent: false, reason: 'not_configured' };
@@ -332,7 +334,7 @@ export class MailService {
     heading: string,
     category: 'service-order' | 'task' | 'project' | 'deadline',
   ): Promise<MailDeliveryResult> {
-    if (!this.operationalEnabled(category))
+    if (!(await this.operationalEnabled(category, input.tenantId)))
       return { sent: false, reason: 'disabled' };
     if (!this.transporter || !this.from)
       return { sent: false, reason: 'not_configured' };
@@ -360,8 +362,9 @@ export class MailService {
     }
   }
 
-  private operationalEnabled(
+  private async operationalEnabled(
     category: 'service-order' | 'task' | 'project' | 'deadline',
+    tenantId?: string,
   ) {
     if (
       !this.readBoolean(
@@ -369,6 +372,10 @@ export class MailService {
       )
     )
       return false;
+    if (tenantId) {
+      const settings = await this.settings.getOrCreateSettingsForTenant(tenantId);
+      if (!settings.operationalEmailsEnabled) return false;
+    }
     const key = {
       'service-order': 'MAIL_SERVICE_ORDER_NOTIFICATIONS_ENABLED',
       task: 'MAIL_TASK_NOTIFICATIONS_ENABLED',

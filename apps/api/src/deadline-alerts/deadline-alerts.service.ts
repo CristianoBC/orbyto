@@ -18,6 +18,7 @@ import { MailService } from '../mail/mail.service';
 import type { DeadlineAlertMailItem } from '../mail/mail.types';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 
 type AlertKind = 'serviceOrder' | 'project' | 'task';
 type AlertItem = DeadlineAlertMailItem & {
@@ -52,6 +53,7 @@ export class DeadlineAlertsService implements OnModuleInit {
     private readonly mail: MailService,
     private readonly config: ConfigService,
     private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly settings: SettingsService,
   ) {}
 
   onModuleInit() {
@@ -123,6 +125,11 @@ export class DeadlineAlertsService implements OnModuleInit {
     actorId?: string,
   ): Promise<DeadlineAlertsSummary> {
     const summary = this.emptySummary();
+    const tenantSettings = await this.settings.getOrCreateSettingsForTenant(tenantId);
+    if (!tenantSettings.deadlineAlertsEnabled) {
+      this.logger.debug(`Alertas de prazo desabilitados para o tenant ${tenantId}.`);
+      return summary;
+    }
     const { today, serviceOrderLimit, projectLimit } = this.dateBoundaries();
     const [serviceOrders, projects, tasks, administrators, staffIds] =
       await Promise.all([
@@ -281,6 +288,7 @@ export class DeadlineAlertsService implements OnModuleInit {
       if (!newlyCreated.length) continue;
       summary.emailsAttempted++;
       const delivery = await this.mail.sendDeadlineAlertSummaryEmail({
+        tenantId,
         to: recipient.email,
         recipientName: recipient.name,
         overdue: newlyCreated.filter((item) => item.overdue),

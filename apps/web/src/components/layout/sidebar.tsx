@@ -12,6 +12,7 @@ const items: readonly [string, string, string, PermissionModule][] = [
   ['/dashboard', '◦', 'Dashboard', 'DASHBOARD'], ['/service-orders', '◁', 'Ordens de Serviço', 'SERVICE_ORDERS'],
   ['/projects', '◇', 'Projetos', 'PROJECTS'], ['/schedule', '▥', 'Cronograma', 'SCHEDULE'], ['/tasks', '✓', 'Tarefas', 'TASKS'],
   ['/daily-logs', '▷', 'Registros Diários', 'DAILY_LOGS'], ['/users', '♙', 'Usuários', 'USERS'], ['/permissions', '⚙', 'Permissões', 'USERS'],
+  ['/settings', '⚙', 'Configurações', 'SETTINGS'],
 ];
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose(): void }) {
