@@ -20,6 +20,7 @@ import { ReportsModule } from './reports/reports.module';
 import { MailModule } from './mail/mail.module';
 import { SettingsModule } from './settings/settings.module';
 import { LookupsModule } from './lookups/lookups.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { LookupsModule } from './lookups/lookups.module';
     ReportsModule,
     MailModule,
     DeadlineAlertsModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],
