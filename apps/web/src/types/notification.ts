@@ -1,5 +1,5 @@
 export type NotificationType = 'INFO' | 'SUCCESS' | 'WARNING' | 'ACTION_REQUIRED';
-export type NotificationEntity = 'SERVICE_ORDER' | 'PROJECT' | 'TASK' | 'DAILY_LOG' | 'USER' | 'PERMISSION' | 'SYSTEM';
+export type NotificationEntity = 'SERVICE_ORDER' | 'PROJECT' | 'TASK' | 'DAILY_LOG' | 'USER' | 'PERMISSION' | 'SYSTEM' | 'SATISFACTION';
 
 export interface Notification {
   id: string;

@@ -10,6 +10,7 @@ import type {
   ServiceOrderAttachment,
   ServiceOrderComment,
 } from "@/types/service-order";
+import type { Satisfaction, ServiceOrderSatisfactionResponse } from "@/types/satisfaction";
 
 const dateTime = (value?: string | null) =>
   value
@@ -42,6 +43,13 @@ export default function RequesterServiceOrderDetailPage() {
   const [text, setText] = useState("");
   const [commenting, setCommenting] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [satisfaction, setSatisfaction] = useState<Satisfaction | null>(null);
+  const [canEvaluate, setCanEvaluate] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [satisfactionComment, setSatisfactionComment] = useState("");
+  const [lowRatingReason, setLowRatingReason] = useState("");
+  const [satisfactionError, setSatisfactionError] = useState("");
+  const [submittingSatisfaction, setSubmittingSatisfaction] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,6 +59,11 @@ export default function RequesterServiceOrderDetailPage() {
         `/service-orders/my/${id}`,
       );
       setOrder(serviceOrder);
+      if (serviceOrder.status === "COMPLETED") {
+        const result = await apiRequest<ServiceOrderSatisfactionResponse>(`/service-orders/${id}/satisfaction`);
+        setSatisfaction(result.satisfaction);
+        setCanEvaluate(result.canEvaluate);
+      }
       const [commentResult, attachmentResult] = await Promise.allSettled([
         apiRequest<ServiceOrderComment[]>(`/comments/service-order/${id}`),
         apiRequest<ServiceOrderAttachment[]>(
@@ -134,6 +147,22 @@ export default function RequesterServiceOrderDetailPage() {
     }
   }
 
+  async function submitSatisfaction(event: FormEvent) {
+    event.preventDefault();
+    setSatisfactionError("");
+    if (!rating) return setSatisfactionError("Selecione uma nota de 1 a 5.");
+    if (rating <= 3 && !lowRatingReason.trim()) return setSatisfactionError("Explique o motivo da nota para que possamos melhorar.");
+    setSubmittingSatisfaction(true);
+    try {
+      const created = await apiRequest<Satisfaction>(`/service-orders/${id}/satisfaction`, { method: "POST", body: { rating, comment: satisfactionComment.trim() || undefined, lowRatingReason: lowRatingReason.trim() || undefined } });
+      setSatisfaction(created);
+      setCanEvaluate(false);
+      setNotice("Avaliação enviada. Obrigado por compartilhar sua experiência.");
+    } catch (reason) {
+      setSatisfactionError(message(reason, "Não foi possível enviar a avaliação."));
+    } finally { setSubmittingSatisfaction(false); }
+  }
+
   if (loading)
     return (
       <div className="detail-state">
@@ -182,6 +211,24 @@ export default function RequesterServiceOrderDetailPage() {
       </header>
       <div className="detail-layout">
         <main className="detail-main">
+          {order.status === "COMPLETED" && (
+            <section className="detail-card satisfaction-card">
+              <div className="section-head"><div><h2>Avaliação do atendimento</h2><p>Sua opinião ajuda a melhorar o atendimento interno.</p></div></div>
+              {satisfaction ? (
+                <div className="satisfaction-sent"><div className="rating-stars" aria-label={`Nota ${satisfaction.rating} de 5`}>{[1,2,3,4,5].map((star) => <span key={star} className={star <= satisfaction.rating ? "selected" : ""}>★</span>)}</div><strong>Nota {satisfaction.rating} de 5</strong>{satisfaction.lowRatingReason && <p><b>Justificativa:</b> {satisfaction.lowRatingReason}</p>}{satisfaction.comment && <p><b>Comentário:</b> {satisfaction.comment}</p>}<small>Enviada em {dateTime(satisfaction.createdAt)}</small></div>
+              ) : canEvaluate ? (
+                <form className="satisfaction-form" onSubmit={submitSatisfaction}>
+                  {satisfactionError && <div className="alert error">{satisfactionError}</div>}
+                  <fieldset><legend>Como você avalia o atendimento?</legend><div className="rating-buttons">{[1,2,3,4,5].map((value) => <button type="button" key={value} className={rating === value ? "selected" : ""} onClick={() => setRating(value)} aria-label={`Nota ${value}`}>★<small>{value}</small></button>)}</div></fieldset>
+                  {rating > 0 && rating <= 3 && <label>Justificativa <span aria-hidden="true">*</span><textarea rows={3} maxLength={3000} required value={lowRatingReason} onChange={(e) => setLowRatingReason(e.target.value)} placeholder="Conte o que não funcionou bem..." /></label>}
+                  <label>Comentário opcional<textarea rows={3} maxLength={3000} value={satisfactionComment} onChange={(e) => setSatisfactionComment(e.target.value)} placeholder="Deixe uma observação adicional..." /></label>
+                  <button className="button primary" disabled={submittingSatisfaction || !rating}>{submittingSatisfaction ? "Enviando..." : "Enviar avaliação"}</button>
+                </form>
+              ) : (
+                <p className="inline-empty">Esta solicitação não está disponível para avaliação.</p>
+              )}
+            </section>
+          )}
           <section className="detail-card">
             <h2>O que foi solicitado</h2>
             <p className="order-description">{order.description}</p>

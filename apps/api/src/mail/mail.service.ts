@@ -156,6 +156,9 @@ export class MailService {
       'service-order',
     );
   }
+  sendSatisfactionLowRatingEmail(input: OperationalMailBase) {
+    return this.sendOperational(input, 'Avaliação baixa recebida — Orbyto', 'Avaliação baixa requer tratativa', 'service-order');
+  }
   sendTaskAssignedEmail(input: OperationalMailBase) {
     return this.sendOperational(
       input,

@@ -112,6 +112,16 @@ enum AuditAction {
   ASSIGN
   COMPLETE
   CANCEL
+  SATISFACTION_SUBMITTED
+  SATISFACTION_LOW_RATING_RECEIVED
+  SATISFACTION_FOLLOWUP_UPDATED
+}
+
+enum SatisfactionFollowUpStatus {
+  PENDING
+  IN_REVIEW
+  RESOLVED
+  CLOSED
 }
 
 enum BillingStatus {
@@ -134,6 +144,7 @@ enum PermissionModule {
   REQUESTER_PORTAL
   SETTINGS
   LOOKUPS
+  SATISFACTION
 }
 
 enum LookupType {
@@ -166,6 +177,7 @@ enum NotificationEntity {
   USER
   PERMISSION
   SYSTEM
+  SATISFACTION
 }
 
 // ======================================================
@@ -193,6 +205,7 @@ model Tenant {
   notifications     Notification[]
   settings          TenantSettings?
   lookupItems       LookupItem[]
+  satisfactions     ServiceOrderSatisfaction[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -288,6 +301,8 @@ model User {
   auditLogs     AuditLog[]
   refreshTokens RefreshToken[]
   notifications Notification[]
+  submittedSatisfactions ServiceOrderSatisfaction[] @relation("SatisfactionRequester")
+  followedUpSatisfactions ServiceOrderSatisfaction[] @relation("SatisfactionFollowedUpBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -438,6 +453,7 @@ model ServiceOrder {
   tasks       ServiceOrderTask[]
   comments    Comment[]
   attachments Attachment[]
+  satisfaction ServiceOrderSatisfaction?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -449,6 +465,31 @@ model ServiceOrder {
   @@index([priority])
   @@index([createdAt])
   @@index([dueDate])
+}
+
+model ServiceOrderSatisfaction {
+  id              String                     @id @default(uuid())
+  tenantId        String
+  serviceOrderId  String                     @unique
+  requesterId     String
+  rating          Int
+  comment         String?
+  lowRatingReason String?
+  followUpStatus  SatisfactionFollowUpStatus?
+  followUpNotes   String?
+  followedUpById  String?
+  followedUpAt    DateTime?
+  tenant          Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceOrder    ServiceOrder               @relation(fields: [serviceOrderId], references: [id], onDelete: Restrict)
+  requester       User                       @relation("SatisfactionRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  followedUpBy    User?                      @relation("SatisfactionFollowedUpBy", fields: [followedUpById], references: [id], onDelete: SetNull)
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, rating])
+  @@index([tenantId, followUpStatus])
+  @@index([requesterId])
 }
 
 // ======================================================

@@ -16,7 +16,7 @@ export interface UserInvitationMail {
   expiresInHours: number;
 }
 
-export type OperationalEntity = 'ServiceOrder' | 'Task' | 'Project';
+export type OperationalEntity = 'ServiceOrder' | 'Task' | 'Project' | 'ServiceOrderSatisfaction';
 
 export interface OperationalMailBase {
   tenantId?: string;

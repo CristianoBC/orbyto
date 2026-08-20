@@ -12,6 +12,7 @@ const moduleLabels: Record<PermissionModule, string> = {
   REQUESTER_PORTAL: 'Portal do Solicitante',
   SETTINGS: 'Configurações',
   LOOKUPS: 'Cadastros Auxiliares',
+  SATISFACTION: 'Satisfação',
 };
 const allAdminModules = Object.keys(moduleLabels).filter((module) => module !== 'REQUESTER_PORTAL') as PermissionModule[];
 const formatDateTime = (value?: string | null, empty = 'Nunca acessou') => value

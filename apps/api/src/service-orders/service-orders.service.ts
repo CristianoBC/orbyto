@@ -257,10 +257,14 @@ export class ServiceOrdersService {
             tenantId: user.tenantId,
             userId: current.requesterId,
             title: statusChanged
-              ? 'Status da ordem de serviço alterado'
+              ? dto.status === ServiceOrderStatus.COMPLETED
+                ? 'Ordem de serviço concluída — avalie o atendimento'
+                : 'Status da ordem de serviço alterado'
               : 'Ordem de serviço atualizada',
             message: statusChanged
-              ? `A ordem de serviço “${current.title}” mudou de ${current.status} para ${dto.status}.`
+              ? dto.status === ServiceOrderStatus.COMPLETED
+                ? `A ordem de serviço “${current.title}” foi concluída. Abra a solicitação para avaliar o atendimento.`
+                : `A ordem de serviço “${current.title}” mudou de ${current.status} para ${dto.status}.`
               : `A ordem de serviço “${current.title}” recebeu uma atualização.`,
             type: statusChanged
               ? NotificationType.ACTION_REQUIRED

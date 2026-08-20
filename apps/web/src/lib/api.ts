@@ -8,6 +8,11 @@ export class ApiError extends Error {
 
 type ApiOptions = Omit<RequestInit, 'body'> & { body?: unknown; authenticated?: boolean };
 
+async function readJson(response: Response): Promise<unknown> {
+  const text = await response.text();
+  return text.trim() ? JSON.parse(text) : undefined;
+}
+
 export async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const { body, authenticated = true, headers, ...init } = options;
   const token = authStorage.getToken();
@@ -27,12 +32,11 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
     if (typeof window !== 'undefined' && window.location.pathname !== '/login') window.location.assign('/login');
   }
   if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { message?: string | string[] } | null;
+    const payload = await readJson(response).catch(() => null) as { message?: string | string[] } | null;
     const message = Array.isArray(payload?.message) ? payload.message.join(' ') : payload?.message;
     throw new ApiError(message ?? 'Não foi possível concluir a solicitação.', response.status);
   }
-  if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+  return await readJson(response) as T;
 }
 
 export async function apiDownload(path: string, fileName: string) {

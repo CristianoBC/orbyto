@@ -21,6 +21,7 @@ import { MailModule } from './mail/mail.module';
 import { SettingsModule } from './settings/settings.module';
 import { LookupsModule } from './lookups/lookups.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { SatisfactionModule } from './satisfaction/satisfaction.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     MailModule,
     DeadlineAlertsModule,
     DashboardModule,
+    SatisfactionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

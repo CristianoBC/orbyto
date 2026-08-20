@@ -75,7 +75,7 @@ async function main() {
   for (const role of Object.values(UserRole)) {
     for (const module of Object.values(PermissionModule)) {
       const ownerOrAdmin = role === UserRole.OWNER || role === UserRole.ADMIN;
-      const manager = role === UserRole.MANAGER && module !== PermissionModule.REQUESTER_PORTAL && module !== PermissionModule.USERS;
+      const manager = role === UserRole.MANAGER && module !== PermissionModule.REQUESTER_PORTAL && module !== PermissionModule.USERS && module !== PermissionModule.SATISFACTION;
       const member = role === UserRole.MEMBER && operational.has(module);
       const requester = role === UserRole.REQUESTER && module === PermissionModule.REQUESTER_PORTAL;
       const enabled = ownerOrAdmin || manager || member || requester;

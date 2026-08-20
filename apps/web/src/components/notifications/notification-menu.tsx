@@ -10,6 +10,7 @@ function destination(item: Notification, requester: boolean) {
   if (item.entity === 'SERVICE_ORDER') return requester ? `/requester/service-orders/${item.entityId}` : `/service-orders/${item.entityId}`;
   if (item.entity === 'PROJECT') return `/projects/${item.entityId}`;
   if (item.entity === 'TASK') return '/tasks';
+  if (item.entity === 'SATISFACTION') return '/satisfaction';
   return null;
 }
 

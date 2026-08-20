@@ -14,6 +14,7 @@ const items: readonly [string, string, string, PermissionModule][] = [
   ['/daily-logs', '▷', 'Registros Diários', 'DAILY_LOGS'], ['/users', '♙', 'Usuários', 'USERS'], ['/permissions', '⚙', 'Permissões', 'USERS'],
   ['/settings', '⚙', 'Configurações', 'SETTINGS'],
   ['/lookups', '▦', 'Cadastros Auxiliares', 'LOOKUPS'],
+  ['/satisfaction', '★', 'Satisfação', 'SATISFACTION'],
 ];
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose(): void }) {
