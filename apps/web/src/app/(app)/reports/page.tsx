@@ -3,108 +3,67 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { apiRequest } from '@/lib/api';
-import type { PermissionModule } from '@/types/auth';
-import type { DailyLogReportRow, ProjectReportRow, ServiceOrderReportRow, TaskReportRow } from '@/types/report';
-import { loadServiceOrderOptions } from '@/lib/lookups';
-import type { ServiceOrderLookupOptions } from '@/types/lookup';
+import { loadActiveLookups, loadServiceOrderOptions } from '@/lib/lookups';
+import type { PermissionModule, User } from '@/types/auth';
+import type { LookupItem, ServiceOrderLookupOptions } from '@/types/lookup';
+import type { Project } from '@/types/project';
+import type { DailyLogReportRow, ProjectReportRow, ReportResponse, ServiceOrderReportRow, TaskReportRow } from '@/types/report';
 
 type ReportKey = 'service-orders' | 'projects' | 'tasks' | 'daily-logs';
 type Row = ServiceOrderReportRow | ProjectReportRow | TaskReportRow | DailyLogReportRow;
-type Filters = { dateFrom: string; dateTo: string; status: string; priority: string; projectId: string; requesterId: string; responsibleId: string; assigneeId: string; unit: string; category: string; system:string };
-type Column = { label: string; value(row: Row): string | number | null | undefined };
-const emptyFilters: Filters = { dateFrom: '', dateTo: '', status: '', priority: '', projectId: '', requesterId: '', responsibleId: '', assigneeId: '', unit: '', category: '', system:'' };
-const date = (value: string | null | undefined) => value ? new Intl.DateTimeFormat('pt-BR').format(new Date(value)) : '—';
-const labels: Record<string, string> = { OPEN: 'Aberta', IN_REVIEW: 'Em análise', IN_PROGRESS: 'Em andamento', WAITING_REQUESTER: 'Aguardando solicitante', COMPLETED: 'Concluído', CANCELED: 'Cancelado', PLANNED: 'Planejado', PAUSED: 'Pausado', TODO: 'A fazer', DOING: 'Em execução', DONE: 'Concluída', PENDING: 'Pendente', WAITING_RETURN: 'Aguardando retorno', LOW: 'Baixa', MEDIUM: 'Média', HIGH: 'Alta', CRITICAL: 'Crítica' };
-const deadlineLabels: Record<string, string> = { overdue: 'Vencida', dueSoon: 'Próxima do prazo', onTrack: 'No prazo', noDueDate: 'Sem prazo' };
-const reportConfig: Record<ReportKey, { label: string; module: PermissionModule; file: string }> = {
-  'service-orders': { label: 'Ordens de Serviço', module: 'SERVICE_ORDERS', file: 'relatorio-ordens-servico.csv' },
-  projects: { label: 'Projetos', module: 'PROJECTS', file: 'relatorio-projetos.csv' },
-  tasks: { label: 'Tarefas', module: 'TASKS', file: 'relatorio-tarefas.csv' },
-  'daily-logs': { label: 'Registros Diários', module: 'DAILY_LOGS', file: 'relatorio-registros-diarios.csv' },
+type Filters = { dateFrom:string; dateTo:string; status:string; priority:string; projectId:string; requesterId:string; responsibleId:string; assigneeId:string; unit:string; category:string; system:string; projectType:string; overdue:boolean; completed:boolean; late:boolean };
+type Column = { label:string; value(row:Row):string|number|null|undefined };
+const emptyFilters:Filters = { dateFrom:'',dateTo:'',status:'',priority:'',projectId:'',requesterId:'',responsibleId:'',assigneeId:'',unit:'',category:'',system:'',projectType:'',overdue:false,completed:false,late:false };
+const fmtDate=(value:string|null|undefined)=>value?new Intl.DateTimeFormat('pt-BR').format(new Date(value)):'—';
+const labels:Record<string,string>={OPEN:'Aberta',IN_REVIEW:'Em análise',IN_PROGRESS:'Em andamento',WAITING_REQUESTER:'Aguardando solicitante',COMPLETED:'Concluído',CANCELED:'Cancelado',PLANNED:'Planejado',PAUSED:'Pausado',TODO:'A fazer',DOING:'Em execução',DONE:'Concluída',PENDING:'Pendente',WAITING_RETURN:'Aguardando retorno',LOW:'Baixa',MEDIUM:'Média',HIGH:'Alta',CRITICAL:'Crítica'};
+const deadlineLabels:Record<string,string>={overdue:'Vencida',dueSoon:'Próxima do prazo',onTrack:'No prazo',noDueDate:'Sem prazo'};
+const config:Record<ReportKey,{label:string;module:PermissionModule;file:string}>={
+  'service-orders':{label:'Ordens de Serviço',module:'SERVICE_ORDERS',file:'relatorio-ordens-servico.csv'},projects:{label:'Projetos',module:'PROJECTS',file:'relatorio-projetos.csv'},tasks:{label:'Tarefas',module:'TASKS',file:'relatorio-tarefas.csv'},'daily-logs':{label:'Registros Diários',module:'DAILY_LOGS',file:'relatorio-registros-diarios.csv'},
 };
+const summaryConfig:Record<ReportKey,[string,string,(v:number|null)=>string][]>={
+  'service-orders':[['total','Total de OS',String],['overdue','Vencidas',String],['completedOnTime','Concluídas no prazo',String],['completedLate','Concluídas em atraso',String],['averageServiceHours','Tempo médio (h)',v=>v===null?'—':String(v)]],
+  projects:[['total','Total de projetos',String],['overdue','Atrasados',String],['completed','Concluídos',String],['inProgress','Em andamento',String],['averageCompletionPercentage','Conclusão média',v=>`${v??0}%`]],
+  tasks:[['total','Total de tarefas',String],['overdue','Vencidas',String],['completed','Concluídas',String],['pending','Pendentes',String],['inProgress','Em andamento',String]],
+  'daily-logs':[['total','Total de registros',String],['totalHours','Horas trabalhadas',v=>Number(v??0).toLocaleString('pt-BR',{maximumFractionDigits:2})]],
+};
+function buildQuery(report:ReportKey,filters:Filters,page:number,limit=100){const query=new URLSearchParams({page:String(page),limit:String(limit)});Object.entries(filters).forEach(([key,value])=>{const relevant=['dateFrom','dateTo','status','overdue','completed','late'].includes(key)||(report!=='daily-logs'&&key==='priority')||(report==='service-orders'&&['unit','category','system','requesterId','responsibleId'].includes(key))||(report==='projects'&&['responsibleId','unit','projectType'].includes(key))||(report==='tasks'&&['projectId','assigneeId'].includes(key))||(report==='daily-logs'&&['projectId','responsibleId'].includes(key));if(relevant&&value)query.set(key,key==='dateTo'?`${value}T23:59:59.999Z`:String(value));});return query;}
 
-function columnsFor(report: ReportKey): Column[] {
-  if (report === 'service-orders') return [
-    { label: 'Número', value: (r) => r.id.slice(0, 8).toUpperCase() }, { label: 'Título', value: (r) => (r as ServiceOrderReportRow).title },
-    { label: 'Solicitante', value: (r) => (r as ServiceOrderReportRow).requester.name }, { label: 'Responsável', value: (r) => (r as ServiceOrderReportRow).responsible?.name ?? '—' },
-    { label: 'Status', value: (r) => labels[(r as ServiceOrderReportRow).status] }, { label: 'Prioridade', value: (r) => labels[(r as ServiceOrderReportRow).priority ?? ''] ?? '—' },
-    { label: 'Categoria', value: (r) => (r as ServiceOrderReportRow).category ?? '—' }, { label: 'Sistema', value: (r) => (r as ServiceOrderReportRow).system ?? '—' },
-    { label: 'Unidade', value: (r) => (r as ServiceOrderReportRow).unit ?? '—' }, { label: 'Prazo', value: (r) => date((r as ServiceOrderReportRow).dueDate) },
-    { label: 'Situação do prazo', value: (r) => deadlineLabels[(r as ServiceOrderReportRow).deadlineStatus] },
-    { label: 'Criação', value: (r) => date((r as ServiceOrderReportRow).createdAt) }, { label: 'Atualização', value: (r) => date((r as ServiceOrderReportRow).updatedAt) },
-    { label: 'Conclusão', value: (r) => date((r as ServiceOrderReportRow).finishedAt) },
-  ];
-  if (report === 'projects') return [
-    { label: 'Nome', value: (r) => (r as ProjectReportRow).title }, { label: 'Responsável', value: (r) => (r as ProjectReportRow).owner.name },
-    { label: 'Status', value: (r) => labels[(r as ProjectReportRow).status] }, { label: 'Prioridade', value: (r) => labels[(r as ProjectReportRow).priority] },
-    { label: 'Departamento', value: (r) => (r as ProjectReportRow).area ?? '—' }, { label: 'Unidade', value: (r) => (r as ProjectReportRow).unit ?? '—' },
-    { label: 'Início previsto', value: (r) => date((r as ProjectReportRow).startDate) }, { label: 'Prazo previsto', value: (r) => date((r as ProjectReportRow).dueDate) },
-    { label: 'Situação do prazo', value: (r) => deadlineLabels[(r as ProjectReportRow).deadlineStatus] },
-    { label: 'Conclusão real', value: (r) => date((r as ProjectReportRow).finishedAt) }, { label: 'Criação', value: (r) => date((r as ProjectReportRow).createdAt) },
-  ];
-  if (report === 'tasks') return [
-    { label: 'Título', value: (r) => (r as TaskReportRow).title }, { label: 'Projeto', value: (r) => (r as TaskReportRow).project.title },
-    { label: 'Responsável', value: (r) => (r as TaskReportRow).assignee?.name ?? '—' }, { label: 'Status', value: (r) => labels[(r as TaskReportRow).status] },
-    { label: 'Prioridade', value: (r) => labels[(r as TaskReportRow).priority] }, { label: 'Prazo', value: (r) => date((r as TaskReportRow).dueDate) },
-    { label: 'Situação do prazo', value: (r) => deadlineLabels[(r as TaskReportRow).deadlineStatus] },
-    { label: 'Criação', value: (r) => date((r as TaskReportRow).createdAt) }, { label: 'Atualização', value: (r) => date((r as TaskReportRow).updatedAt) },
-  ];
-  return [
-    { label: 'Data', value: (r) => date((r as DailyLogReportRow).date) }, { label: 'Título', value: (r) => (r as DailyLogReportRow).title },
-    { label: 'Projeto', value: (r) => (r as DailyLogReportRow).project?.title ?? '—' }, { label: 'Tarefa', value: () => '—' },
-    { label: 'Autor', value: (r) => (r as DailyLogReportRow).user.name }, { label: 'Horas trabalhadas', value: (r) => (r as DailyLogReportRow).workedHours ?? '—' },
-    { label: 'Status', value: (r) => labels[(r as DailyLogReportRow).status] }, { label: 'Resumo / conteúdo', value: (r) => (r as DailyLogReportRow).description ?? '—' },
-  ];
+function columnsFor(report:ReportKey):Column[]{
+  if(report==='service-orders')return [{label:'Número',value:r=>r.id.slice(0,8).toUpperCase()},{label:'Título',value:r=>(r as ServiceOrderReportRow).title},{label:'Solicitante',value:r=>(r as ServiceOrderReportRow).requester.name},{label:'Responsável',value:r=>(r as ServiceOrderReportRow).responsible?.name??'—'},{label:'Status',value:r=>labels[(r as ServiceOrderReportRow).status]},{label:'Prioridade',value:r=>labels[(r as ServiceOrderReportRow).priority??'']??'—'},{label:'Categoria',value:r=>(r as ServiceOrderReportRow).category??'—'},{label:'Sistema/processo',value:r=>(r as ServiceOrderReportRow).system??'—'},{label:'Unidade',value:r=>(r as ServiceOrderReportRow).unit??'—'},{label:'Prazo',value:r=>fmtDate((r as ServiceOrderReportRow).dueDate)},{label:'Situação do prazo',value:r=>deadlineLabels[(r as ServiceOrderReportRow).deadlineStatus]},{label:'Criação',value:r=>fmtDate((r as ServiceOrderReportRow).createdAt)},{label:'Conclusão',value:r=>fmtDate((r as ServiceOrderReportRow).finishedAt)}];
+  if(report==='projects')return [{label:'Projeto',value:r=>(r as ProjectReportRow).title},{label:'Tipo',value:r=>(r as ProjectReportRow).type??'—'},{label:'Responsável',value:r=>(r as ProjectReportRow).owner.name},{label:'Status',value:r=>labels[(r as ProjectReportRow).status]},{label:'Prioridade',value:r=>labels[(r as ProjectReportRow).priority]},{label:'Unidade',value:r=>(r as ProjectReportRow).unit??'—'},{label:'Conclusão',value:r=>`${(r as ProjectReportRow).completionPercentage}%`},{label:'Prazo',value:r=>fmtDate((r as ProjectReportRow).dueDate)},{label:'Situação do prazo',value:r=>deadlineLabels[(r as ProjectReportRow).deadlineStatus]}];
+  if(report==='tasks')return [{label:'Tarefa',value:r=>(r as TaskReportRow).title},{label:'Projeto',value:r=>(r as TaskReportRow).project.title},{label:'Responsável',value:r=>(r as TaskReportRow).assignee?.name??'—'},{label:'Status',value:r=>labels[(r as TaskReportRow).status]},{label:'Prioridade',value:r=>labels[(r as TaskReportRow).priority]},{label:'Prazo',value:r=>fmtDate((r as TaskReportRow).dueDate)},{label:'Situação do prazo',value:r=>deadlineLabels[(r as TaskReportRow).deadlineStatus]},{label:'Conclusão',value:r=>fmtDate((r as TaskReportRow).finishedAt)}];
+  return [{label:'Data',value:r=>fmtDate((r as DailyLogReportRow).date)},{label:'Título',value:r=>(r as DailyLogReportRow).title},{label:'Projeto',value:r=>(r as DailyLogReportRow).project?.title??'—'},{label:'Usuário',value:r=>(r as DailyLogReportRow).user.name},{label:'Horas',value:r=>(r as DailyLogReportRow).workedHours??'—'},{label:'Status',value:r=>labels[(r as DailyLogReportRow).status]},{label:'Descrição',value:r=>(r as DailyLogReportRow).description??'—'}];
 }
 
-export default function ReportsPage() {
-  const { can } = useAuth();
-  const available = (Object.keys(reportConfig) as ReportKey[]).filter((key) => can(reportConfig[key].module));
-  const [report, setReport] = useState<ReportKey>(available[0] ?? 'service-orders');
-  const [filters, setFilters] = useState(emptyFilters); const [applied, setApplied] = useState(emptyFilters);
-  const [rows, setRows] = useState<Row[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
-  const [lookupOptions,setLookupOptions]=useState<ServiceOrderLookupOptions>({units:[],categories:[],systems:[]});
-  const columns = useMemo(() => columnsFor(report), [report]);
-  const load = useCallback(async () => {
-    if (!can(reportConfig[report].module)) return;
-    setLoading(true); setError('');
-    const query = new URLSearchParams();
-    Object.entries(applied).forEach(([key, value]) => {
-      const relevant = ['dateFrom', 'dateTo', 'status'].includes(key) || (report !== 'daily-logs' && key === 'priority') || (report === 'service-orders' && ['unit', 'category', 'system', 'requesterId', 'responsibleId'].includes(key)) || (report === 'projects' && ['responsibleId','unit'].includes(key)) || (report === 'tasks' && ['projectId', 'assigneeId'].includes(key)) || (report === 'daily-logs' && ['projectId', 'responsibleId'].includes(key));
-      if (value && relevant) query.set(key, key === 'dateTo' ? `${value}T23:59:59.999Z` : value);
-    });
-    try { setRows(await apiRequest<Row[]>(`/reports/${report}?${query}`)); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Não foi possível carregar o relatório.'); setRows([]); }
-    finally { setLoading(false); }
-  }, [applied, can, report]);
-  useEffect(() => { void load(); }, [load]);
-  useEffect(()=>{void loadServiceOrderOptions().then(setLookupOptions).catch(()=>setLookupOptions({units:[],categories:[],systems:[]}))},[]);
-  function changeReport(next: ReportKey) { setReport(next); setFilters(emptyFilters); setApplied(emptyFilters); setRows([]); }
-  function submit(event: FormEvent) { event.preventDefault(); setApplied(filters); }
-  function exportCsv() {
-    const safe = (value: unknown) => { let text = String(value ?? ''); if (/^[=+\-@]/.test(text)) text = `'${text}`; return `"${text.replace(/"/g, '""')}"`; };
-    const csv = [columns.map((column) => safe(column.label)).join(';'), ...rows.map((row) => columns.map((column) => safe(column.value(row))).join(';'))].join('\r\n');
-    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
-    const anchor = document.createElement('a'); anchor.href = url; anchor.download = reportConfig[report].file; anchor.click(); URL.revokeObjectURL(url);
-  }
-  const statusOptions = report === 'service-orders' ? ['OPEN', 'IN_REVIEW', 'IN_PROGRESS', 'WAITING_REQUESTER', 'COMPLETED', 'CANCELED'] : report === 'projects' ? ['PLANNED', 'IN_PROGRESS', 'PAUSED', 'COMPLETED', 'CANCELED'] : report === 'tasks' ? ['PLANNED', 'TODO', 'DOING', 'DONE', 'CANCELED'] : ['COMPLETED', 'IN_PROGRESS', 'PENDING', 'WAITING_RETURN'];
+export default function ReportsPage(){
+  const {can,user}=useAuth(); const available=(Object.keys(config) as ReportKey[]).filter(k=>can(config[k].module));
+  const [report,setReport]=useState<ReportKey>(available[0]??'service-orders'); const [filters,setFilters]=useState(emptyFilters); const [applied,setApplied]=useState(emptyFilters); const [page,setPage]=useState(1);
+  const [data,setData]=useState<ReportResponse<Row>|null>(null); const [loading,setLoading]=useState(true); const [error,setError]=useState('');
+  const [lookups,setLookups]=useState<ServiceOrderLookupOptions>({units:[],categories:[],systems:[]}); const [projectTypes,setProjectTypes]=useState<LookupItem[]>([]); const [users,setUsers]=useState<User[]>([]); const [projects,setProjects]=useState<Project[]>([]);
+  const columns=useMemo(()=>columnsFor(report),[report]);
+  const load=useCallback(async()=>{if(!can(config[report].module))return;setLoading(true);setError('');try{setData(await apiRequest<ReportResponse<Row>>(`/reports/${report}?${buildQuery(report,applied,page)}`));}catch(reason){setError(reason instanceof Error?reason.message:'Não foi possível carregar o relatório.');setData(null);}finally{setLoading(false);}},[applied,can,page,report]);
+  useEffect(()=>{void load();},[load]);
+  useEffect(()=>{void loadServiceOrderOptions().then(setLookups).catch(()=>undefined);if(can('LOOKUPS'))void loadActiveLookups('PROJECT_TYPE').then(setProjectTypes).catch(()=>undefined);if(can('USERS'))void apiRequest<User[]>('/users').then(setUsers).catch(()=>undefined);if(can('PROJECTS'))void apiRequest<Project[]>(user?.role==='VIEWER'?'/projects':'/projects/my').then(setProjects).catch(()=>undefined);},[can,user?.role]);
+  function changeReport(next:ReportKey){setReport(next);setFilters(emptyFilters);setApplied(emptyFilters);setPage(1);setData(null);}
+  function submit(e:FormEvent){e.preventDefault();setPage(1);setApplied(filters);}
+  async function exportCsv(){if(!data)return;setLoading(true);setError('');try{const all:Row[]=[];for(let current=1;current<=Math.ceil(data.pagination.total/200);current++){const result=await apiRequest<ReportResponse<Row>>(`/reports/${report}?${buildQuery(report,applied,current,200)}`);all.push(...result.rows);}const safe=(value:unknown)=>{let text=String(value??'');if(/^[=+\-@]/.test(text))text=`'${text}`;return `"${text.replace(/"/g,'""')}"`;};const csv=[columns.map(c=>safe(c.label)).join(';'),...all.map(row=>columns.map(c=>safe(c.value(row))).join(';'))].join('\r\n');const url=URL.createObjectURL(new Blob([`\uFEFF${csv}`],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=config[report].file;a.click();URL.revokeObjectURL(url);}catch(reason){setError(reason instanceof Error?reason.message:'Não foi possível exportar o relatório.');}finally{setLoading(false);}}
+  if(!available.length)return <div className="report-state"><strong>Acesso indisponível</strong><span>Seu perfil não possui permissão para visualizar relatórios operacionais.</span></div>;
   return <>
-    <header className="page-heading"><div><p className="eyebrow">Análise gerencial</p><h1>Relatórios</h1><p>Consulte dados operacionais e exporte os resultados filtrados.</p></div><button className="button primary" disabled={loading || !rows.length} onClick={exportCsv}>Exportar CSV</button></header>
-    <div className="report-tabs" role="tablist">{available.map((key) => <button role="tab" aria-selected={report === key} className={report === key ? 'active' : ''} key={key} onClick={() => changeReport(key)}>{reportConfig[key].label}</button>)}</div>
-    <form className="report-filters" onSubmit={submit}>
-      <label>Período inicial<input type="date" value={filters.dateFrom} onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })} /></label>
-      <label>Período final<input type="date" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })} /></label>
-      <label>Status<select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}><option value="">Todos</option>{statusOptions.map((item) => <option value={item} key={item}>{labels[item]}</option>)}</select></label>
-      {report !== 'daily-logs' && <label>Prioridade<select value={filters.priority} onChange={(e) => setFilters({ ...filters, priority: e.target.value })}><option value="">Todas</option>{['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].map((item) => <option value={item} key={item}>{labels[item]}</option>)}</select></label>}
-      {(report === 'service-orders'||report==='projects')&&<ReportLookup label="Unidade" value={filters.unit} options={lookupOptions.units} set={unit=>setFilters({...filters,unit})}/>} {report==='service-orders'&&<><ReportLookup label="Categoria" value={filters.category} options={lookupOptions.categories} set={category=>setFilters({...filters,category})}/><ReportLookup label="Sistema/Processo" value={filters.system} options={lookupOptions.systems} set={system=>setFilters({...filters,system})}/></>}
-      {report === 'service-orders' && <label>Solicitante<input value={filters.requesterId} onChange={(e) => setFilters({ ...filters, requesterId: e.target.value })} placeholder="ID do solicitante" /></label>}
-      {(report === 'service-orders' || report === 'projects' || report === 'daily-logs') && <label>{report === 'daily-logs' ? 'Autor' : 'Responsável'}<input value={filters.responsibleId} onChange={(e) => setFilters({ ...filters, responsibleId: e.target.value })} placeholder={`ID do ${report === 'daily-logs' ? 'autor' : 'responsável'}`} /></label>}
-      {report === 'tasks' && <label>Responsável<input value={filters.assigneeId} onChange={(e) => setFilters({ ...filters, assigneeId: e.target.value })} placeholder="ID do responsável" /></label>}
-      {(report === 'tasks' || report === 'daily-logs') && <label>Projeto<input value={filters.projectId} onChange={(e) => setFilters({ ...filters, projectId: e.target.value })} placeholder="ID do projeto" /></label>}
-      <div className="report-filter-actions"><button className="button primary" disabled={loading}>Aplicar filtros</button><button type="button" className="button ghost" onClick={() => { setFilters(emptyFilters); setApplied(emptyFilters); }}>Limpar</button></div>
-    </form>
-    {error ? <div className="alert error"><span>{error}</span><button onClick={() => void load()}>Tentar novamente</button></div> : loading ? <div className="report-state"><span className="spinner" />Carregando relatório...</div> : !rows.length ? <div className="report-state"><strong>Nenhum resultado encontrado</strong><span>Ajuste os filtros e tente novamente.</span></div> : <section className="report-card"><header><strong>{rows.length} registro(s)</strong><span>Os dados exibidos respeitam seu perfil e suas permissões.</span></header><div className="report-table-wrap"><table><thead><tr>{columns.map((column) => <th key={column.label}>{column.label}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={row.id}>{columns.map((column) => <td key={column.label}>{column.value(row)}</td>)}</tr>)}</tbody></table></div></section>}
+    <header className="page-heading"><div><p className="eyebrow">Análise gerencial</p><h1>Relatórios avançados</h1><p>Indicadores consolidados e dados operacionais do seu tenant.</p></div><button className="button primary" disabled={loading||!data?.rows.length} onClick={exportCsv}>Exportar CSV</button></header>
+    <div className="report-tabs" role="tablist">{available.map(key=><button role="tab" aria-selected={report===key} className={report===key?'active':''} key={key} onClick={()=>changeReport(key)}>{config[key].label}</button>)}</div>
+    <ReportFilters report={report} filters={filters} setFilters={setFilters} submit={submit} loading={loading} clear={()=>{setFilters(emptyFilters);setApplied(emptyFilters);setPage(1);}} lookups={lookups} projectTypes={projectTypes} users={users} projects={projects}/>
+    {data&&<ReportSummaryCards report={report} summary={data.summary}/>} {data&&<GroupedHighlights groups={data.groupedData}/>}
+    {error?<div className="alert error"><span>{error}</span><button onClick={()=>void load()}>Tentar novamente</button></div>:loading?<div className="report-state"><span className="spinner"/>Carregando relatório...</div>:!data?.rows.length?<div className="report-state"><strong>Nenhum resultado encontrado</strong><span>Ajuste os filtros e tente novamente.</span></div>:<ReportTable rows={data.rows} columns={columns} pagination={data.pagination} setPage={setPage}/>}
   </>;
 }
 
-function ReportLookup({label,value,options,set}:{label:string;value:string;options:{id:string;name:string}[];set(value:string):void}){return <label>{label}{options.length?<select value={value} onChange={e=>set(e.target.value)}><option value="">Todos</option>{options.map(item=><option value={item.name} key={item.id}>{item.name}</option>)}</select>:<input value={value} onChange={e=>set(e.target.value)} placeholder={`${label} exato`}/>}</label>}
+function ReportFilters({report,filters,setFilters,submit,loading,clear,lookups,projectTypes,users,projects}:{report:ReportKey;filters:Filters;setFilters(v:Filters):void;submit(e:FormEvent):void;loading:boolean;clear():void;lookups:ServiceOrderLookupOptions;projectTypes:LookupItem[];users:User[];projects:Project[]}){const set=<K extends keyof Filters>(key:K,value:Filters[K])=>setFilters({...filters,[key]:value});const statuses=report==='service-orders'?['OPEN','IN_REVIEW','IN_PROGRESS','WAITING_REQUESTER','COMPLETED','CANCELED']:report==='projects'?['PLANNED','IN_PROGRESS','PAUSED','COMPLETED','CANCELED']:report==='tasks'?['PLANNED','TODO','DOING','DONE','CANCELED']:['COMPLETED','IN_PROGRESS','PENDING','WAITING_RETURN'];return <form className="report-filters" onSubmit={submit}>
+  <label>Período inicial<input type="date" value={filters.dateFrom} onChange={e=>set('dateFrom',e.target.value)}/></label><label>Período final<input type="date" value={filters.dateTo} onChange={e=>set('dateTo',e.target.value)}/></label><Select label="Status" value={filters.status} options={statuses.map(v=>({value:v,label:labels[v]}))} set={v=>set('status',v)}/>
+  {report!=='daily-logs'&&<Select label="Prioridade" value={filters.priority} options={['LOW','MEDIUM','HIGH','CRITICAL'].map(v=>({value:v,label:labels[v]}))} set={v=>set('priority',v)}/>} {(report==='service-orders'||report==='projects')&&<Select label="Unidade" value={filters.unit} options={lookups.units.map(v=>({value:v.name,label:v.name}))} set={v=>set('unit',v)}/>} {report==='service-orders'&&<><Select label="Categoria" value={filters.category} options={lookups.categories.map(v=>({value:v.name,label:v.name}))} set={v=>set('category',v)}/><Select label="Sistema/processo" value={filters.system} options={lookups.systems.map(v=>({value:v.name,label:v.name}))} set={v=>set('system',v)}/></>}
+  {report==='projects'&&<Select label="Tipo de projeto" value={filters.projectType} options={projectTypes.map(v=>({value:v.name,label:v.name}))} set={v=>set('projectType',v)}/>} {(report==='tasks'||report==='daily-logs')&&<Select label="Projeto" value={filters.projectId} options={projects.map(v=>({value:v.id,label:v.name}))} set={v=>set('projectId',v)}/>} {report==='service-orders'&&<Select label="Solicitante" value={filters.requesterId} options={users.map(v=>({value:v.id,label:v.name}))} set={v=>set('requesterId',v)}/>} {(report==='service-orders'||report==='projects'||report==='daily-logs')&&<Select label={report==='daily-logs'?'Usuário':'Responsável'} value={filters.responsibleId} options={users.map(v=>({value:v.id,label:v.name}))} set={v=>set('responsibleId',v)}/>} {report==='tasks'&&<Select label="Responsável" value={filters.assigneeId} options={users.map(v=>({value:v.id,label:v.name}))} set={v=>set('assigneeId',v)}/>}
+  <div className="report-checks"><label><input type="checkbox" checked={filters.overdue} onChange={e=>set('overdue',e.target.checked)}/> Somente vencidos</label>{report!=='daily-logs'&&<label><input type="checkbox" checked={filters.completed} onChange={e=>set('completed',e.target.checked)}/> Somente concluídos</label>}{(report==='service-orders'||report==='projects'||report==='tasks')&&<label><input type="checkbox" checked={filters.late} onChange={e=>set('late',e.target.checked)}/> Concluídos em atraso</label>}</div><div className="report-filter-actions"><button className="button primary" disabled={loading}>Aplicar filtros</button><button type="button" className="button ghost" onClick={clear}>Limpar filtros</button></div>
+  </form>}
+function Select({label,value,options,set}:{label:string;value:string;options:{value:string;label:string}[];set(v:string):void}){return <label>{label}{options.length?<select value={value} onChange={e=>set(e.target.value)}><option value="">Todos</option>{options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>:<input value={value} onChange={e=>set(e.target.value)} placeholder={`${label}: valor exato`}/>}</label>}
+function ReportSummaryCards({report,summary}:{report:ReportKey;summary:Record<string,number|null>}){return <section className="report-summary">{summaryConfig[report].map(([key,label,format])=><article key={key}><span>{label}</span><strong>{format(summary[key]===undefined?0:summary[key])}</strong></article>)}</section>}
+function GroupedHighlights({groups}:{groups:Record<string,{label:string;total:number}[]>}){const entries=Object.entries(groups).filter(([,items])=>items.length);return <section className="report-groups">{entries.map(([key,items])=><article key={key}><strong>{({status:'Por status',priority:'Por prioridade',category:'Por categoria',unit:'Por unidade',system:'Por sistema/processo',requester:'Por solicitante',responsible:'Por responsável',type:'Por tipo',project:'Por projeto',user:'Por usuário',hoursByUser:'Horas por usuário',hoursByProject:'Horas por projeto'} as Record<string,string>)[key]??key}</strong><div>{items.slice(0,5).map(item=><span key={item.label}><em>{labels[item.label]??item.label}</em><b>{item.total.toLocaleString('pt-BR')}</b></span>)}</div></article>)}</section>}
+function ReportTable({rows,columns,pagination,setPage}:{rows:Row[];columns:Column[];pagination:ReportResponse<Row>['pagination'];setPage(v:number):void}){return <section className="report-card"><header><strong>{pagination.total} registro(s)</strong><span>Página {pagination.page} de {pagination.pages}</span></header><div className="report-table-wrap"><table><thead><tr>{columns.map(c=><th key={c.label}>{c.label}</th>)}</tr></thead><tbody>{rows.map(row=><tr key={row.id}>{columns.map(c=><td key={c.label}>{c.value(row)}</td>)}</tr>)}</tbody></table></div>{pagination.pages>1&&<footer className="report-pagination"><button className="button ghost" disabled={pagination.page===1} onClick={()=>setPage(pagination.page-1)}>Anterior</button><button className="button ghost" disabled={pagination.page===pagination.pages} onClick={()=>setPage(pagination.page+1)}>Próxima</button></footer>}</section>}

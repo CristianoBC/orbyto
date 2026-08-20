@@ -7,12 +7,16 @@ import {
 } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsDate,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator';
 
 class PeriodQueryDto {
@@ -25,6 +29,34 @@ class PeriodQueryDto {
   @Type(() => Date)
   @IsDate()
   dateTo?: Date;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page = 1;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit = 100;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  overdue?: boolean;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  completed?: boolean;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  late?: boolean;
 }
 
 export class ServiceOrderReportQueryDto extends PeriodQueryDto {
@@ -42,6 +74,7 @@ export class ProjectReportQueryDto extends PeriodQueryDto {
   @IsOptional() @IsEnum(Priority) priority?: Priority;
   @IsOptional() @IsUUID() responsibleId?: string;
   @IsOptional() @IsString() @MaxLength(180) unit?: string;
+  @IsOptional() @IsString() @MaxLength(180) projectType?: string;
 }
 
 export class TaskReportQueryDto extends PeriodQueryDto {
