@@ -441,7 +441,7 @@ export default function ProjectDetailPage() {
                   <article className="project-task" key={task.id}>
                     <div className="task-copy">
                       <div className="task-title-row">
-                        <h3>{task.title}</h3>
+                        <h3><Link href={`/tasks/${task.id}`}>{task.title}</Link></h3>
                         <span
                           className={`badge priority-${task.priority.toLowerCase()}`}
                         >
@@ -459,6 +459,7 @@ export default function ProjectDetailPage() {
                           : "não definido"}
                       </small>
                     </div>
+                    <Link className="button ghost task-edit-button" href={`/tasks/${task.id}`}>Ver detalhes</Link>
                     {canEditTask && <div className="project-task-actions">
                       <button
                         className="button ghost task-edit-button"

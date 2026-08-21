@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { taskDeadline } from '@/lib/deadline';
 import { Modal } from '@/components/ui/modal';
 import { TargetPanels } from '@/components/collaboration/target-panels';
+import Link from 'next/link';
 
 const columns: { status: TaskStatus; label: string; hint: string }[] = [
   { status: 'PLANNED', label: 'Planejado', hint: 'Atividades previstas' },
@@ -111,12 +112,13 @@ export default function TasksPage() {
             <div className="kanban-cards">
               {columnItems.length === 0 ? <div className="kanban-column-empty">Nenhuma tarefa nesta etapa</div> : columnItems.map((task) => <article className={`task-card${taskDeadline(task).status === 'overdue' ? ' deadline-card-overdue' : ''}`} key={task.id}>
                 <div className="task-card-top"><span className={`badge priority-${task.priority.toLowerCase()}`}>{priorityLabels[task.priority]}</span><span className={`badge deadline-${taskDeadline(task).status}`}>{taskDeadline(task).label}</span>{task.project && <span className="task-project" title={task.project.title}>{task.project.title}</span>}</div>
-                <h3>{task.title}</h3>
+                <h3><Link href={`/tasks/${task.id}`}>{task.title}</Link></h3>
                 <p className="task-description">{task.description?.trim() || 'Sem descrição informada.'}</p>
                 <div className="task-meta">
                   <div><span>Responsável</span><strong>{task.assignee?.name ?? 'Não informado'}</strong></div>
                   <div><span>Prazo</span><strong>{formatDate(task.dueDate)}</strong></div>
                 </div>
+                <Link className="button ghost small" href={`/tasks/${task.id}`}>Ver detalhes</Link>
                 <button type="button" className="button ghost small" onClick={() => setSelectedTask(task)}>Comentários e anexos</button>
                 {canEdit && <label className="task-status-control"><span>Status</span><select value={task.status} disabled={updatingId === task.id} onChange={(event) => void updateStatus(task, event.target.value as TaskStatus)} aria-label={`Alterar status de ${task.title}`}>
                   {columns.map((option) => <option key={option.status} value={option.status}>{option.label}</option>)}

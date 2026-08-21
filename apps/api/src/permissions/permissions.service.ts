@@ -27,7 +27,11 @@ export class PermissionsService {
   async has(user: AuthUser, module: PermissionModule, action: PermissionAction) {
     if (user.role === UserRole.OWNER) return true;
     const permissions = await this.forRole(user.tenantId, user.role);
-    return Boolean(permissions.find((item) => item.module === module)?.[actionField[action]]);
+    const permission = permissions.find((item) => item.module === module);
+    return Boolean(
+      permission?.[actionField[action]] ||
+        (action === 'edit' && permission?.canManage),
+    );
   }
   async update(actor: AuthUser, role: UserRole, dto: UpdateRolePermissionsDto) {
     if (role === UserRole.OWNER || role === UserRole.REQUESTER) throw new ForbiddenException('As permissões essenciais de OWNER e REQUESTER são protegidas.');

@@ -86,6 +86,8 @@ export class AttachmentsController {
   }
 
   @Post('task/:taskId')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission(PermissionModule.TASKS, 'edit')
   @UseInterceptors(FileInterceptor('file', { limits: { files: 1, fileSize: maximumFileSize }, fileFilter: (_request, file, callback) => { const extension = AttachmentsService.getFileExtension(file.originalname); callback(allowedExtensions.has(extension) ? null : new BadRequestException('Tipo de arquivo não permitido. Envie um documento ou imagem suportado.'), allowedExtensions.has(extension)); } }))
   uploadForTask(@CurrentUser() user: AuthUser, @Param('taskId') taskId: string, @UploadedFile() file?: Express.Multer.File) {
     return this.attachmentsService.uploadForTask(user, taskId, file);

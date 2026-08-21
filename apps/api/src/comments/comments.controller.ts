@@ -32,6 +32,8 @@ export class CommentsController {
   }
 
   @Post('task/:taskId')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission(PermissionModule.TASKS, 'edit')
   createForTask(@CurrentUser() user: AuthUser, @Param('taskId') taskId: string, @Body() dto: CreateTargetCommentDto) {
     return this.commentsService.create(user, { refType: RefType.TASK, refId: taskId, text: dto.text });
   }

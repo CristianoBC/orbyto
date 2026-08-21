@@ -8,7 +8,8 @@ export interface Task {
   priority: Priority;
   status: TaskStatus;
   dueDate?: string | null;
-  project: { id: string; title: string };
+  completedAt?: string | null;
+  project: { id: string; title: string; ownerId?: string; status?: string };
   assignee?: { id: string; name: string; email: string; avatarUrl?: string | null } | null;
   createdAt?: string;
   updatedAt?: string;

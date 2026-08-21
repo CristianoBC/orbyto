@@ -11,7 +11,7 @@ import type { DashboardItem, DashboardModuleKey, DashboardOverview } from '@/typ
 const moduleInfo: Record<DashboardModuleKey, { label: string; href: (id: string) => string }> = {
   serviceOrders: { label: 'Ordem de serviço', href: (id) => `/service-orders/${id}` },
   projects: { label: 'Projeto', href: (id) => `/projects/${id}` },
-  tasks: { label: 'Tarefa', href: () => '/tasks' },
+  tasks: { label: 'Tarefa', href: (id) => `/tasks/${id}` },
   dailyLogs: { label: 'Registro diário', href: () => '/daily-logs' },
 };
 
