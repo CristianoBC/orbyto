@@ -72,6 +72,32 @@ export class AttachmentsController {
     );
   }
 
+  @Post('project/:projectId')
+  @UseInterceptors(FileInterceptor('file', { limits: { files: 1, fileSize: maximumFileSize }, fileFilter: (_request, file, callback) => { const extension = AttachmentsService.getFileExtension(file.originalname); callback(allowedExtensions.has(extension) ? null : new BadRequestException('Tipo de arquivo não permitido. Envie um documento ou imagem suportado.'), allowedExtensions.has(extension)); } }))
+  uploadForProject(@CurrentUser() user: AuthUser, @Param('projectId') projectId: string, @UploadedFile() file?: Express.Multer.File) {
+    return this.attachmentsService.uploadForProject(user, projectId, file);
+  }
+
+  @Get('project/:projectId')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission(PermissionModule.PROJECTS, 'view')
+  findByProject(@CurrentUser() user: AuthUser, @Param('projectId') projectId: string) {
+    return this.attachmentsService.findByProject(user, projectId);
+  }
+
+  @Post('task/:taskId')
+  @UseInterceptors(FileInterceptor('file', { limits: { files: 1, fileSize: maximumFileSize }, fileFilter: (_request, file, callback) => { const extension = AttachmentsService.getFileExtension(file.originalname); callback(allowedExtensions.has(extension) ? null : new BadRequestException('Tipo de arquivo não permitido. Envie um documento ou imagem suportado.'), allowedExtensions.has(extension)); } }))
+  uploadForTask(@CurrentUser() user: AuthUser, @Param('taskId') taskId: string, @UploadedFile() file?: Express.Multer.File) {
+    return this.attachmentsService.uploadForTask(user, taskId, file);
+  }
+
+  @Get('task/:taskId')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission(PermissionModule.TASKS, 'view')
+  findByTask(@CurrentUser() user: AuthUser, @Param('taskId') taskId: string) {
+    return this.attachmentsService.findByTask(user, taskId);
+  }
+
   @Get('service-order/:serviceOrderId')
   @UseGuards(PermissionsGuard)
   @RequirePermission(PermissionModule.SERVICE_ORDERS, 'view')
@@ -83,8 +109,6 @@ export class AttachmentsController {
   }
 
   @Get(':id/download')
-  @UseGuards(PermissionsGuard)
-  @RequirePermission(PermissionModule.SERVICE_ORDERS, 'view')
   async download(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

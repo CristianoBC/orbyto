@@ -12,6 +12,7 @@ import {
   NotificationType,
   Prisma,
   RefType,
+  PermissionModule,
   UserRole,
 } from '@prisma/client';
 import type { Express } from 'express';
@@ -23,6 +24,7 @@ import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MailService } from '../mail/mail.service';
+import { PermissionsService } from '../permissions/permissions.service';
 
 const attachmentInclude = {
   uploadedBy: {
@@ -54,6 +56,7 @@ export class AttachmentsService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly mail: MailService,
+    private readonly permissions: PermissionsService,
   ) {}
 
   async onModuleInit() {
@@ -187,6 +190,39 @@ export class AttachmentsService implements OnModuleInit {
     });
   }
 
+  uploadForProject(user: AuthUser, projectId: string, file?: Express.Multer.File) { return this.uploadForTarget(user, RefType.PROJECT, projectId, file); }
+  uploadForTask(user: AuthUser, taskId: string, file?: Express.Multer.File) { return this.uploadForTarget(user, RefType.TASK, taskId, file); }
+  async findByProject(user: AuthUser, projectId: string) { await this.validateProjectAccess(user, projectId, false); return this.findForTarget(user, RefType.PROJECT, projectId); }
+  async findByTask(user: AuthUser, taskId: string) { await this.validateTaskAccess(user, taskId, false); return this.findForTarget(user, RefType.TASK, taskId); }
+
+  private findForTarget(user: AuthUser, refType: RefType, refId: string) {
+    return this.prisma.attachment.findMany({ where: { tenantId: user.tenantId, refType, refId, ...(refType === RefType.PROJECT ? { projectId: refId } : { taskId: refId }) }, include: attachmentInclude, orderBy: { createdAt: 'desc' } });
+  }
+
+  private async uploadForTarget(user: AuthUser, refType: RefType, refId: string, file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Envie um arquivo no campo file.');
+    const recipients = refType === RefType.PROJECT
+      ? [(await this.validateProjectAccess(user, refId, true)).ownerId]
+      : await this.validateTaskAccess(user, refId, true).then((task) => [task.assigneeId, task.project.ownerId]);
+    const folder = refType === RefType.PROJECT ? 'projects' : 'tasks';
+    const extension = AttachmentsService.getFileExtension(file.originalname);
+    const fileName = `${randomUUID()}${extension}`;
+    const directory = this.resolveInsideUploads(user.tenantId, folder, refId);
+    const filePath = this.resolveInsideUploads(user.tenantId, folder, refId, fileName);
+    const storageKey = relative(this.uploadsDirectory, filePath).replaceAll(sep, '/');
+    await mkdir(directory, { recursive: true });
+    await writeFile(filePath, file.buffer, { flag: 'wx' });
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const attachment = await tx.attachment.create({ data: { tenantId: user.tenantId, uploadedById: user.id, refType, refId, ...(refType === RefType.PROJECT ? { projectId: refId } : { taskId: refId }), fileName, originalName: basename(file.originalname), mimeType: file.mimetype || 'application/octet-stream', size: file.size, storageKey }, include: attachmentInclude });
+        const isProject = refType === RefType.PROJECT;
+        await tx.auditLog.create({ data: { tenantId: user.tenantId, userId: user.id, action: AuditAction.ATTACHMENT, entity: isProject ? 'Project' : 'Task', entityId: refId, metadata: { event: isProject ? 'PROJECT_ATTACHMENT_UPLOADED' : 'TASK_ATTACHMENT_UPLOADED', attachmentId: attachment.id, fileName } } });
+        await this.notifications.createForUsers(recipients.filter((id): id is string => Boolean(id) && id !== user.id), { tenantId: user.tenantId, title: isProject ? 'Novo anexo no projeto' : 'Novo anexo na tarefa', message: `${user.name} adicionou o arquivo “${basename(file.originalname)}”.`, type: NotificationType.INFO, entity: isProject ? NotificationEntity.PROJECT : NotificationEntity.TASK, entityId: refId }, tx);
+        return attachment;
+      });
+    } catch (error) { await unlink(filePath).catch(() => undefined); throw error; }
+  }
+
   async download(user: AuthUser, id: string) {
     const attachment = await this.prisma.attachment.findFirst({
       where: { id, tenantId: user.tenantId },
@@ -196,13 +232,10 @@ export class AttachmentsService implements OnModuleInit {
       throw new NotFoundException('Anexo não encontrado.');
     }
 
-    if (attachment.refType !== RefType.SERVICE_ORDER) {
-      throw new BadRequestException(
-        `Download para o tipo ${attachment.refType} ainda não está implementado.`,
-      );
-    }
-
-    await this.validateServiceOrderAccess(user, attachment.refId, 'baixar');
+    if (attachment.refType === RefType.SERVICE_ORDER) await this.validateServiceOrderAccess(user, attachment.refId, 'baixar');
+    else if (attachment.refType === RefType.PROJECT) await this.validateProjectAccess(user, attachment.refId, false);
+    else if (attachment.refType === RefType.TASK) await this.validateTaskAccess(user, attachment.refId, false);
+    else throw new BadRequestException(`Download para o tipo ${attachment.refType} ainda não está implementado.`);
     const filePath = this.resolveStorageKey(attachment.storageKey);
 
     try {
@@ -274,6 +307,22 @@ export class AttachmentsService implements OnModuleInit {
     }
 
     return serviceOrder;
+  }
+
+  private async canWrite(user: AuthUser, module: PermissionModule) { return user.role === UserRole.OWNER || await this.permissions.has(user, module, 'edit') || await this.permissions.has(user, module, 'manage'); }
+  private async validateProjectAccess(user: AuthUser, projectId: string, write: boolean) {
+    const project = await this.prisma.project.findFirst({ where: { id: projectId, tenantId: user.tenantId }, select: { id: true, title: true, ownerId: true, tasks: { where: { tenantId: user.tenantId, assigneeId: user.id }, select: { id: true }, take: 1 } } });
+    if (!project) throw new NotFoundException('Projeto não encontrado.');
+    if (write && !(await this.canWrite(user, PermissionModule.PROJECTS))) throw new ForbiddenException('Você não pode anexar arquivos neste projeto.');
+    if (!administrativeRoles.includes(user.role) && user.role !== UserRole.VIEWER && project.ownerId !== user.id && !project.tasks.length) throw new ForbiddenException('Você não pode acessar este projeto.');
+    return project;
+  }
+  private async validateTaskAccess(user: AuthUser, taskId: string, write: boolean) {
+    const task = await this.prisma.task.findFirst({ where: { id: taskId, tenantId: user.tenantId }, select: { id: true, title: true, assigneeId: true, project: { select: { ownerId: true } } } });
+    if (!task) throw new NotFoundException('Tarefa não encontrada.');
+    if (write && !(await this.canWrite(user, PermissionModule.TASKS))) throw new ForbiddenException('Você não pode anexar arquivos nesta tarefa.');
+    if (!administrativeRoles.includes(user.role) && user.role !== UserRole.VIEWER && task.assigneeId !== user.id && task.project.ownerId !== user.id) throw new ForbiddenException('Você não pode acessar esta tarefa.');
+    return task;
   }
 
   private async emailRecipients(

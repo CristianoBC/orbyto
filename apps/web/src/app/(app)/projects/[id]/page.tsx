@@ -7,6 +7,7 @@ import { Field, FormActions, SelectPriority } from "@/components/ui/forms";
 import { Modal } from "@/components/ui/modal";
 import { DailyLogList } from "@/components/daily-logs/daily-log-list";
 import { DailyLogModal } from "@/components/daily-logs/daily-log-modal";
+import { TargetPanels } from "@/components/collaboration/target-panels";
 import { ErrorState, formatDate, labels } from "@/components/ui/page-state";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest } from "@/lib/api";
@@ -502,6 +503,7 @@ export default function ProjectDetailPage() {
               <div className="project-tasks-empty"><span>◷</span><strong>Nenhum registro diário</strong><p>Nenhum registro foi encontrado para este projeto.</p>{canCreateDailyLog && <button className="button ghost" onClick={() => setDailyLogOpen(true)}>Criar registro</button>}</div>
             ) : <DailyLogList items={dailyLogs} compact />}
           </section>
+          <TargetPanels targetType="project" targetId={id} canContribute={can("PROJECTS", "edit") || can("PROJECTS", "manage")} />
         </main>
         <aside className="summary-card">
           <h2>Resumo do projeto</h2>

@@ -8,6 +8,8 @@ import type { Priority } from '@/types/service-order';
 import type { Task, TaskStatus } from '@/types/task';
 import { useAuth } from '@/contexts/auth-context';
 import { taskDeadline } from '@/lib/deadline';
+import { Modal } from '@/components/ui/modal';
+import { TargetPanels } from '@/components/collaboration/target-panels';
 
 const columns: { status: TaskStatus; label: string; hint: string }[] = [
   { status: 'PLANNED', label: 'Planejado', hint: 'Atividades previstas' },
@@ -32,6 +34,7 @@ export default function TasksPage() {
   const [textFilter, setTextFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<Priority | 'ALL'>('ALL');
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'ALL'>('ALL');
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -114,6 +117,7 @@ export default function TasksPage() {
                   <div><span>Responsável</span><strong>{task.assignee?.name ?? 'Não informado'}</strong></div>
                   <div><span>Prazo</span><strong>{formatDate(task.dueDate)}</strong></div>
                 </div>
+                <button type="button" className="button ghost small" onClick={() => setSelectedTask(task)}>Comentários e anexos</button>
                 {canEdit && <label className="task-status-control"><span>Status</span><select value={task.status} disabled={updatingId === task.id} onChange={(event) => void updateStatus(task, event.target.value as TaskStatus)} aria-label={`Alterar status de ${task.title}`}>
                   {columns.map((option) => <option key={option.status} value={option.status}>{option.label}</option>)}
                 </select>{updatingId === task.id && <span className="spinner" aria-label="Atualizando status" />}</label>}
@@ -123,5 +127,6 @@ export default function TasksPage() {
         })}
       </div>
     </>}
+    {selectedTask && <Modal title={selectedTask.title} eyebrow="Colaboração da tarefa" onClose={() => setSelectedTask(null)}><div className="task-collaboration"><TargetPanels targetType="task" targetId={selectedTask.id} canContribute={can('TASKS', 'edit') || can('TASKS', 'manage')} /></div></Modal>}
   </>;
 }
