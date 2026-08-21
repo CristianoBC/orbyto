@@ -206,6 +206,7 @@ model Tenant {
   settings          TenantSettings?
   lookupItems       LookupItem[]
   satisfactions     ServiceOrderSatisfaction[]
+  notificationPreferences UserNotificationPreference[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -301,6 +302,7 @@ model User {
   auditLogs     AuditLog[]
   refreshTokens RefreshToken[]
   notifications Notification[]
+  notificationPreference UserNotificationPreference?
   submittedSatisfactions ServiceOrderSatisfaction[] @relation("SatisfactionRequester")
   followedUpSatisfactions ServiceOrderSatisfaction[] @relation("SatisfactionFollowedUpBy")
 
@@ -313,6 +315,31 @@ model User {
   @@index([status])
   @@index([passwordResetTokenHash])
   @@index([inviteTokenHash])
+}
+
+model UserNotificationPreference {
+  id                              String   @id @default(uuid())
+  tenantId                        String
+  userId                          String   @unique
+  internalNotificationsEnabled    Boolean  @default(true)
+  emailNotificationsEnabled       Boolean  @default(true)
+  serviceOrderUpdatesEmail        Boolean  @default(true)
+  serviceOrderCommentsEmail       Boolean  @default(true)
+  serviceOrderAttachmentsEmail    Boolean  @default(true)
+  projectUpdatesEmail             Boolean  @default(true)
+  projectCommentsEmail            Boolean  @default(true)
+  taskUpdatesEmail                Boolean  @default(true)
+  taskCommentsEmail               Boolean  @default(true)
+  deadlineAlertsEmail             Boolean  @default(true)
+  satisfactionAlertsEmail         Boolean  @default(true)
+  dailySummaryEmail               Boolean  @default(false)
+  tenant                          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user                            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt                       DateTime @default(now())
+  updatedAt                       DateTime @updatedAt
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
 }
 
 model RefreshToken {

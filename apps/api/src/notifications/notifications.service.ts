@@ -12,6 +12,7 @@ import { PermissionsService } from '../permissions/permissions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListNotificationsQueryDto } from './dto/list-notifications-query.dto';
 import { SettingsService } from '../settings/settings.service';
+import { NotificationPreferencesService } from '../notification-preferences/notification-preferences.service';
 
 type NotificationDb = PrismaService | Prisma.TransactionClient;
 type CreateNotification = {
@@ -30,6 +31,7 @@ export class NotificationsService {
     private readonly prisma: PrismaService,
     private readonly permissions: PermissionsService,
     private readonly settings: SettingsService,
+    private readonly preferences: NotificationPreferencesService,
   ) {}
 
   async findAll(user: AuthUser, query: ListNotificationsQueryDto) {
@@ -78,6 +80,7 @@ export class NotificationsService {
   async createForUser(data: CreateNotification, db: NotificationDb = this.prisma) {
     const settings = await this.settings.getOrCreateSettingsForTenant(data.tenantId);
     if (!settings.internalNotificationsEnabled) return null;
+    if (!(await this.preferences.shouldCreateInternalNotification(data.userId, data.tenantId))) return null;
     return db.notification.create({
       data: { ...data, type: data.type ?? NotificationType.INFO },
     });
@@ -92,8 +95,14 @@ export class NotificationsService {
     if (!uniqueIds.length) return { count: 0 };
     const settings = await this.settings.getOrCreateSettingsForTenant(data.tenantId);
     if (!settings.internalNotificationsEnabled) return { count: 0 };
+    const allowedIds = (
+      await Promise.all(uniqueIds.map(async (userId) =>
+        (await this.preferences.shouldCreateInternalNotification(userId, data.tenantId)) ? userId : null,
+      ))
+    ).filter((userId): userId is string => Boolean(userId));
+    if (!allowedIds.length) return { count: 0 };
     return db.notification.createMany({
-      data: uniqueIds.map((userId) => ({
+      data: allowedIds.map((userId) => ({
         ...data,
         userId,
         type: data.type ?? NotificationType.INFO,

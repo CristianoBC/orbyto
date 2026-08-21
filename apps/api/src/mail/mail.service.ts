@@ -18,6 +18,8 @@ import type {
   UserInvitationMail,
 } from './mail.types';
 import { SettingsService } from '../settings/settings.service';
+import { NotificationPreferencesService } from '../notification-preferences/notification-preferences.service';
+import { NotificationPreferenceEvent } from '../notification-preferences/notification-preference-events';
 
 @Injectable()
 export class MailService {
@@ -29,6 +31,7 @@ export class MailService {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
+    private readonly preferences: NotificationPreferencesService,
   ) {
     const host = config.get<string>('SMTP_HOST')?.trim();
     const address = config.get<string>('MAIL_FROM_ADDRESS')?.trim();
@@ -123,6 +126,7 @@ export class MailService {
       'Nova ordem de serviço aberta — Orbyto',
       'Nova ordem de serviço aberta',
       'service-order',
+      NotificationPreferenceEvent.SERVICE_ORDER_UPDATED,
     );
   }
   sendServiceOrderUpdatedEmail(
@@ -138,6 +142,7 @@ export class MailService {
         ? 'Status da sua ordem de serviço foi alterado'
         : 'Sua ordem de serviço foi atualizada',
       'service-order',
+      NotificationPreferenceEvent.SERVICE_ORDER_UPDATED,
     );
   }
   sendServiceOrderCommentEmail(input: OperationalMailBase) {
@@ -146,6 +151,7 @@ export class MailService {
       'Novo comentário em ordem de serviço — Orbyto',
       'Novo comentário em ordem de serviço',
       'service-order',
+      NotificationPreferenceEvent.SERVICE_ORDER_COMMENT_CREATED,
     );
   }
   sendServiceOrderAttachmentEmail(input: OperationalMailBase) {
@@ -154,10 +160,11 @@ export class MailService {
       'Novo anexo em ordem de serviço — Orbyto',
       'Novo anexo em ordem de serviço',
       'service-order',
+      NotificationPreferenceEvent.SERVICE_ORDER_ATTACHMENT_UPLOADED,
     );
   }
   sendSatisfactionLowRatingEmail(input: OperationalMailBase) {
-    return this.sendOperational(input, 'Avaliação baixa recebida — Orbyto', 'Avaliação baixa requer tratativa', 'service-order');
+    return this.sendOperational(input, 'Avaliação baixa recebida — Orbyto', 'Avaliação baixa requer tratativa', 'service-order', NotificationPreferenceEvent.SATISFACTION_LOW_RATING);
   }
   sendTaskAssignedEmail(input: OperationalMailBase) {
     return this.sendOperational(
@@ -165,6 +172,7 @@ export class MailService {
       'Nova tarefa atribuída a você — Orbyto',
       'Nova tarefa atribuída a você',
       'task',
+      NotificationPreferenceEvent.TASK_UPDATED,
     );
   }
   sendTaskUpdatedEmail(
@@ -180,6 +188,7 @@ export class MailService {
         ? 'Prazo de tarefa atualizado'
         : 'Status de tarefa atualizado',
       'task',
+      NotificationPreferenceEvent.TASK_UPDATED,
     );
   }
   sendProjectCreatedEmail(input: OperationalMailBase) {
@@ -188,6 +197,7 @@ export class MailService {
       'Novo projeto sob sua responsabilidade — Orbyto',
       'Novo projeto sob sua responsabilidade',
       'project',
+      NotificationPreferenceEvent.PROJECT_UPDATED,
     );
   }
   sendProjectUpdatedEmail(input: OperationalMailBase, deadlineChanged = false) {
@@ -198,6 +208,7 @@ export class MailService {
         : 'Projeto atualizado — Orbyto',
       deadlineChanged ? 'Prazo de projeto atualizado' : 'Projeto atualizado',
       'project',
+      NotificationPreferenceEvent.PROJECT_UPDATED,
     );
   }
 
@@ -208,6 +219,7 @@ export class MailService {
       'Alerta de prazo de ordem de serviço — Orbyto',
       'Alerta de prazo de ordem de serviço',
       'deadline',
+      NotificationPreferenceEvent.DEADLINE_ALERT,
     );
   }
   sendTaskDeadlineAlertEmail(input: OperationalMailBase) {
@@ -216,6 +228,7 @@ export class MailService {
       'Alerta de prazo de tarefa — Orbyto',
       'Alerta de prazo de tarefa',
       'deadline',
+      NotificationPreferenceEvent.DEADLINE_ALERT,
     );
   }
   sendProjectDeadlineAlertEmail(input: OperationalMailBase) {
@@ -224,6 +237,7 @@ export class MailService {
       'Alerta de prazo de projeto — Orbyto',
       'Alerta de prazo de projeto',
       'deadline',
+      NotificationPreferenceEvent.DEADLINE_ALERT,
     );
   }
 
@@ -231,6 +245,8 @@ export class MailService {
     input: DeadlineAlertSummaryMail,
   ): Promise<MailDeliveryResult> {
     if (!(await this.operationalEnabled('deadline', input.tenantId)))
+      return { sent: false, reason: 'disabled' };
+    if (!(await this.individualEnabled(input, NotificationPreferenceEvent.DEADLINE_ALERT)))
       return { sent: false, reason: 'disabled' };
     if (!this.transporter || !this.from)
       return { sent: false, reason: 'not_configured' };
@@ -336,8 +352,11 @@ export class MailService {
     subject: string,
     heading: string,
     category: 'service-order' | 'task' | 'project' | 'deadline',
+    eventType: NotificationPreferenceEvent,
   ): Promise<MailDeliveryResult> {
     if (!(await this.operationalEnabled(category, input.tenantId)))
+      return { sent: false, reason: 'disabled' };
+    if (!(await this.individualEnabled(input, eventType)))
       return { sent: false, reason: 'disabled' };
     if (!this.transporter || !this.from)
       return { sent: false, reason: 'not_configured' };
@@ -363,6 +382,20 @@ export class MailService {
       );
       return { sent: false, reason: 'delivery_failed' };
     }
+  }
+
+  private async individualEnabled(
+    input: Pick<OperationalMailBase, 'tenantId' | 'recipientUserId' | 'to'>,
+    eventType: NotificationPreferenceEvent,
+  ) {
+    if (!input.tenantId) return true;
+    const userId = input.recipientUserId ?? (await this.prisma.user.findFirst({
+      where: { tenantId: input.tenantId, email: input.to.toLowerCase() },
+      select: { id: true },
+    }))?.id;
+    return userId
+      ? this.preferences.shouldSendEmail(userId, input.tenantId, eventType)
+      : true;
   }
 
   private async operationalEnabled(

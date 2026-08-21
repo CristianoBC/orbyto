@@ -5,6 +5,14 @@ import { useAuth } from '@/contexts/auth-context';
 import { apiRequest } from '@/lib/api';
 import { labels, LoadingState } from '@/components/ui/page-state';
 import type { PermissionModule, User } from '@/types/auth';
+import type { NotificationPreference, NotificationPreferenceForm } from '@/types/notification-preference';
+
+const defaultNotificationPreferences: NotificationPreferenceForm = {
+  internalNotificationsEnabled: true, emailNotificationsEnabled: true,
+  serviceOrderUpdatesEmail: true, serviceOrderCommentsEmail: true, serviceOrderAttachmentsEmail: true,
+  projectUpdatesEmail: true, projectCommentsEmail: true, taskUpdatesEmail: true, taskCommentsEmail: true,
+  deadlineAlertsEmail: true, satisfactionAlertsEmail: true, dailySummaryEmail: false,
+};
 
 const moduleLabels: Record<PermissionModule, string> = {
   DASHBOARD: 'Dashboard', SERVICE_ORDERS: 'Ordens de Serviço', PROJECTS: 'Projetos', TASKS: 'Tarefas',
@@ -27,15 +35,19 @@ export function ProfilePage({ requester = false }: { requester?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
+  const [notificationPreferences, setNotificationPreferences] = useState(defaultNotificationPreferences);
+  const [savingNotifications, setSavingNotifications] = useState(false);
   const [profileMessage, setProfileMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [notificationMessage, setNotificationMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const current = await apiRequest<User>('/users/me');
+      const [current, preferences] = await Promise.all([apiRequest<User>('/users/me'), apiRequest<NotificationPreference>('/notification-preferences/me')]);
       setProfile(current);
       setForm({ name: current.name, phone: current.phone ?? '', avatarUrl: current.avatarUrl ?? '' });
+      setNotificationPreferences(Object.fromEntries(Object.keys(defaultNotificationPreferences).map((key) => [key, preferences[key as keyof NotificationPreferenceForm]])) as unknown as NotificationPreferenceForm);
     } catch (reason) {
       setProfileMessage({ type: 'error', text: messageFrom(reason, 'Não foi possível carregar seu perfil.') });
     } finally { setLoading(false); }
@@ -71,6 +83,19 @@ export function ProfilePage({ requester = false }: { requester?: boolean }) {
     finally { setChangingPassword(false); }
   }
 
+  async function saveNotificationPreferences(event: FormEvent) {
+    event.preventDefault(); setSavingNotifications(true); setNotificationMessage(null);
+    try {
+      await apiRequest('/notification-preferences/me', { method: 'PATCH', body: notificationPreferences });
+      setNotificationMessage({ type: 'success', text: 'Preferências de notificação salvas com sucesso.' });
+    } catch (reason) { setNotificationMessage({ type: 'error', text: messageFrom(reason, 'Não foi possível salvar suas preferências.') }); }
+    finally { setSavingNotifications(false); }
+  }
+
+  const notificationToggle = (field: keyof NotificationPreferenceForm, title: string, description: string, disabled = false) => <label className={`settings-toggle ${disabled ? 'disabled' : ''}`}>
+    <span><strong>{title}</strong><small>{description}</small></span><input type="checkbox" checked={notificationPreferences[field]} disabled={disabled} onChange={(event) => setNotificationPreferences((current) => ({ ...current, [field]: event.target.checked }))} /><i aria-hidden="true" />
+  </label>;
+
   if (loading) return <LoadingState />;
   if (!profile) return <div className="alert error" role="alert">{profileMessage?.text ?? 'Perfil não encontrado.'}</div>;
   const initials = profile.name.split(' ').slice(0, 2).map((part) => part[0]).join('').toUpperCase();
@@ -99,6 +124,17 @@ export function ProfilePage({ requester = false }: { requester?: boolean }) {
           <label>Nova senha<input type="password" required minLength={8} maxLength={72} autoComplete="new-password" value={password.newPassword} onChange={(event) => setPassword({ ...password, newPassword: event.target.value })} /><small>Use letras, números e caractere especial.</small></label>
           <label>Confirmar nova senha<input type="password" required minLength={8} maxLength={72} autoComplete="new-password" value={password.confirmation} onChange={(event) => setPassword({ ...password, confirmation: event.target.value })} /></label>
           <button className="button primary" disabled={changingPassword}>{changingPassword ? 'Alterando...' : 'Alterar senha'}</button>
+        </form>
+      </section>
+      <section className="profile-card profile-notifications"><header><div><p className="eyebrow">Comunicação</p><h2>Preferências de Notificação</h2><p>Escolha quais comunicações operacionais deseja receber. E-mails essenciais de segurança permanecem ativos.</p></div></header>
+        {notificationMessage && <div className={`alert ${notificationMessage.type}`} role="status">{notificationMessage.text}</div>}
+        <form className="notification-preferences-form" onSubmit={saveNotificationPreferences}>
+          <div className="notification-preference-group"><h3>Geral</h3><div className="settings-toggles">{notificationToggle('internalNotificationsEnabled', 'Receber notificações internas', 'Avisos exibidos dentro do Orbyto.')}{notificationToggle('emailNotificationsEnabled', 'Receber notificações por e-mail', 'Controle geral para e-mails operacionais.')}</div></div>
+          <div className="notification-preference-group"><h3>Ordens de Serviço</h3><div className="settings-toggles">{notificationToggle('serviceOrderUpdatesEmail', 'Atualizações de OS', 'Alterações e status de ordens de serviço.', !notificationPreferences.emailNotificationsEnabled)}{notificationToggle('serviceOrderCommentsEmail', 'Comentários em OS', 'Novos comentários em ordens de serviço.', !notificationPreferences.emailNotificationsEnabled)}{notificationToggle('serviceOrderAttachmentsEmail', 'Anexos em OS', 'Novos arquivos anexados em ordens de serviço.', !notificationPreferences.emailNotificationsEnabled)}</div></div>
+          <div className="notification-preference-group"><h3>Projetos</h3><div className="settings-toggles">{notificationToggle('projectUpdatesEmail', 'Atualizações em projetos', 'Alterações nos projetos relacionados a você.', !notificationPreferences.emailNotificationsEnabled)}{notificationToggle('projectCommentsEmail', 'Comentários em projetos', 'Preparado para o envio de comentários por e-mail.', !notificationPreferences.emailNotificationsEnabled)}</div></div>
+          <div className="notification-preference-group"><h3>Tarefas</h3><div className="settings-toggles">{notificationToggle('taskUpdatesEmail', 'Atualizações em tarefas', 'Atribuições, status e alterações de prazo.', !notificationPreferences.emailNotificationsEnabled)}{notificationToggle('taskCommentsEmail', 'Comentários em tarefas', 'Preparado para o envio de comentários por e-mail.', !notificationPreferences.emailNotificationsEnabled)}</div></div>
+          <div className="notification-preference-group"><h3>Alertas</h3><div className="settings-toggles">{notificationToggle('deadlineAlertsEmail', 'Alertas de prazo', 'Itens próximos do prazo ou vencidos.', !notificationPreferences.emailNotificationsEnabled)}{notificationToggle('satisfactionAlertsEmail', 'Avaliação baixa de satisfação', 'Avaliações que exigem tratativa.', !notificationPreferences.emailNotificationsEnabled)}{notificationToggle('dailySummaryEmail', 'Resumo diário por e-mail', 'Preferência disponível para integração futura.', true)}</div></div>
+          <button className="button primary" disabled={savingNotifications}>{savingNotifications ? 'Salvando...' : 'Salvar preferências'}</button>
         </form>
       </section>
       <section className="profile-card profile-permissions"><header><div><p className="eyebrow">Perfil e permissões</p><h2>Seu acesso ao Orbyto</h2></div></header>

@@ -22,6 +22,7 @@ import { SettingsModule } from './settings/settings.module';
 import { LookupsModule } from './lookups/lookups.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { SatisfactionModule } from './satisfaction/satisfaction.module';
+import { NotificationPreferencesModule } from './notification-preferences/notification-preferences.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { SatisfactionModule } from './satisfaction/satisfaction.module';
     DeadlineAlertsModule,
     DashboardModule,
     SatisfactionModule,
+    NotificationPreferencesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
