@@ -13,6 +13,9 @@ const statuses: UserStatus[] = ['ACTIVE', 'PENDING', 'INACTIVE', 'BLOCKED'];
 const emptyForm = { name: '', email: '', role: 'MEMBER' as UserRole, status: 'ACTIVE' as UserStatus, phone: '' };
 const message = (reason: unknown, fallback: string) => reason instanceof Error ? reason.message : fallback;
 const formatDateTime = (value?: string | null, empty = 'Nunca acessou') => value ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : empty;
+type SortKey = 'name' | 'role' | 'status' | 'lastLoginAt' | 'createdAt';
+type SortDirection = 'asc' | 'desc';
+const pageSizes = [10, 25, 50, 100];
 
 export default function UsersPage() {
   const currentUser = useMemo(() => authStorage.getUser(), []);
@@ -27,6 +30,39 @@ export default function UsersPage() {
   const [resetting, setResetting] = useState<User | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [newPassword, setNewPassword] = useState('');
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<UserRole | 'ALL'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<UserStatus | 'ALL'>('ALL');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+  const filteredItems = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase('pt-BR');
+    return items
+      .filter((item) => (!term || item.name.toLocaleLowerCase('pt-BR').includes(term) || item.email.toLocaleLowerCase('pt-BR').includes(term)) && (roleFilter === 'ALL' || item.role === roleFilter) && (statusFilter === 'ALL' || item.status === statusFilter))
+      .sort((left, right) => {
+        const leftValue = left[sortKey] ?? '';
+        const rightValue = right[sortKey] ?? '';
+        const result = sortKey === 'lastLoginAt' || sortKey === 'createdAt'
+          ? (leftValue ? new Date(leftValue).getTime() : 0) - (rightValue ? new Date(rightValue).getTime() : 0)
+          : String(leftValue).localeCompare(String(rightValue), 'pt-BR', { sensitivity: 'base' });
+        return sortDirection === 'asc' ? result : -result;
+      });
+  }, [items, roleFilter, search, sortDirection, sortKey, statusFilter]);
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+  const visibleItems = filteredItems.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => { setPage(1); }, [search, roleFilter, statusFilter, pageSize]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
+
+  const changeSort = (key: SortKey) => {
+    if (key === sortKey) setSortDirection((current) => current === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDirection(key === 'name' ? 'asc' : 'desc'); }
+    setPage(1);
+  };
+  const sortLabel = (key: SortKey) => sortKey === key ? (sortDirection === 'asc' ? '↑' : '↓') : '↕';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -79,14 +115,25 @@ export default function UsersPage() {
     <div className="users-role-note"><strong>Perfil Solicitante</strong><span>O REQUESTER acessa apenas o portal de solicitações para abrir e acompanhar suas ordens de serviço.</span></div>
     {notice && <div className="alert success" role="status"><span>{notice}</span><button onClick={() => setNotice('')} aria-label="Fechar aviso">×</button></div>}
     {error && <ErrorState message={error} retry={load} />}
-    {loading ? <LoadingState /> : !error && !items.length ? <EmptyState text="Nenhum usuário foi encontrado." /> : !error && <div className="user-grid">{items.map((item) => {
-      const isSelf = item.id === currentUser?.id; const cannotManage = currentUser?.role === 'ADMIN' && item.role === 'OWNER';
-      return <article className="user-card" key={item.id}>
-        <div className="user-card-main"><span className="avatar large">{item.name.split(' ').slice(0, 2).map((part) => part[0]).join('').toUpperCase()}</span><div><h3>{item.name}{isSelf && <small>Você</small>}</h3><p>{item.email}</p><div className="badges"><span className="badge status">{labels[item.role]}</span><span className={`badge user-${item.status.toLowerCase()}`}>{labels[item.status]}</span></div></div></div>
-        <dl className="user-meta"><div><dt>{item.status === 'PENDING' ? 'Convite enviado' : 'Último login'}</dt><dd>{item.status === 'PENDING' ? formatDateTime(item.invitedAt, '—') : formatDateTime(item.lastLoginAt)}</dd></div><div><dt>Criado em</dt><dd>{formatDateTime(item.createdAt, '—')}</dd></div></dl>
-        <div className="user-actions"><button className="button ghost small" disabled={cannotManage} onClick={() => openEdit(item)}>Editar</button>{item.status === 'PENDING' ? <button className="button ghost small" disabled={cannotManage} onClick={() => void resendInvite(item)}>Reenviar convite</button> : <button className="button ghost small" disabled={cannotManage} onClick={() => { setFormError(''); setNewPassword(''); setResetting(item); }}>Redefinir senha</button>}<button className={`button small ${item.status === 'ACTIVE' ? 'danger-ghost' : 'ghost'}`} disabled={isSelf || cannotManage} onClick={() => void toggleStatus(item)}>{item.status === 'ACTIVE' ? 'Inativar' : 'Ativar'}</button></div>
-      </article>;
-    })}</div>}
+    {!loading && !error && items.length > 0 && <section className="users-toolbar" aria-label="Busca e filtros de usuários">
+      <label className="users-search"><span>Buscar</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nome ou e-mail" /></label>
+      <label><span>Perfil</span><select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as UserRole | 'ALL')}><option value="ALL">Todos</option>{(['OWNER', 'ADMIN', 'MANAGER', 'MEMBER', 'VIEWER', 'REQUESTER'] as UserRole[]).map((role) => <option key={role} value={role}>{labels[role]}</option>)}</select></label>
+      <label><span>Status</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as UserStatus | 'ALL')}><option value="ALL">Todos</option><option value="ACTIVE">Ativo</option><option value="INACTIVE">Inativo</option><option value="PENDING">Pendente</option></select></label>
+      <label><span>Por página</span><select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>{pageSizes.map((size) => <option key={size} value={size}>{size}</option>)}</select></label>
+    </section>}
+    {loading ? <LoadingState /> : !error && !items.length ? <EmptyState text="Nenhum usuário foi encontrado." /> : !error && !filteredItems.length ? <EmptyState text="Nenhum usuário encontrado com os filtros selecionados." /> : !error && <section className="users-table-card">
+      <div className="users-table-wrap"><table className="users-table"><thead><tr>
+        <th><button onClick={() => changeSort('name')}>Nome <span>{sortLabel('name')}</span></button></th><th>E-mail</th>
+        <th><button onClick={() => changeSort('role')}>Perfil <span>{sortLabel('role')}</span></button></th>
+        <th><button onClick={() => changeSort('status')}>Status <span>{sortLabel('status')}</span></button></th>
+        <th><button onClick={() => changeSort('lastLoginAt')}>Último login <span>{sortLabel('lastLoginAt')}</span></button></th>
+        <th><button onClick={() => changeSort('createdAt')}>Criado em <span>{sortLabel('createdAt')}</span></button></th><th>Convite enviado</th><th>Ações</th>
+      </tr></thead><tbody>{visibleItems.map((item) => {
+        const isSelf = item.id === currentUser?.id; const cannotManage = currentUser?.role === 'ADMIN' && item.role === 'OWNER';
+        return <tr key={item.id}><td><div className="user-identity"><span className="avatar">{item.name.split(' ').slice(0, 2).map((part) => part[0]).join('').toUpperCase()}</span><strong>{item.name}{isSelf && <small>Você</small>}</strong></div></td><td className="user-email">{item.email}</td><td><span className="badge status">{labels[item.role]}</span></td><td><span className={`badge user-${item.status.toLowerCase()}`}>{labels[item.status]}</span></td><td>{formatDateTime(item.lastLoginAt)}</td><td>{formatDateTime(item.createdAt, '—')}</td><td>{item.status === 'PENDING' ? formatDateTime(item.invitedAt, '—') : '—'}</td><td><div className="user-row-actions"><button className="button ghost small" disabled={cannotManage} onClick={() => openEdit(item)}>Editar</button>{item.status === 'PENDING' ? <button className="button ghost small" disabled={cannotManage} onClick={() => void resendInvite(item)}>Reenviar convite</button> : <button className="button ghost small" disabled={cannotManage} onClick={() => { setFormError(''); setNewPassword(''); setResetting(item); }}>Redefinir senha</button>}<button className={`button small ${item.status === 'ACTIVE' ? 'danger-ghost' : 'ghost'}`} disabled={isSelf || cannotManage} onClick={() => void toggleStatus(item)}>{item.status === 'ACTIVE' ? 'Inativar' : 'Ativar'}</button></div></td></tr>;
+      })}</tbody></table></div>
+      <footer className="users-pagination"><span>{filteredItems.length} usuário(s) · página {page} de {totalPages}</span><div><button className="button ghost small" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>Anterior</button><button className="button ghost small" disabled={page === totalPages} onClick={() => setPage((current) => current + 1)}>Próxima</button></div></footer>
+    </section>}
 
     {(creating || editing) && <Modal title={creating ? 'Convidar usuário' : 'Editar usuário'} eyebrow="Gestão de acessos" onClose={closeForms}><form className="form-grid" onSubmit={saveUser}>
       {formError && <div className="alert error span-2" role="alert">{formError}</div>}
