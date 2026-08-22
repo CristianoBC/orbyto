@@ -23,6 +23,8 @@ import { LookupsModule } from './lookups/lookups.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { SatisfactionModule } from './satisfaction/satisfaction.module';
 import { NotificationPreferencesModule } from './notification-preferences/notification-preferences.module';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
@@ -31,6 +33,10 @@ import { NotificationPreferencesModule } from './notification-preferences/notifi
       envFilePath: ['apps/api/.env', '.env'],
     }),
     ScheduleModule.forRoot(),
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60_000, limit: process.env.NODE_ENV === 'production' ? 120 : 1000 }],
+      errorMessage: 'Muitas solicitações. Aguarde alguns instantes e tente novamente.',
+    }),
     PrismaModule,
     SettingsModule,
     LookupsModule,
@@ -53,6 +59,6 @@ import { NotificationPreferencesModule } from './notification-preferences/notifi
     NotificationPreferencesModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

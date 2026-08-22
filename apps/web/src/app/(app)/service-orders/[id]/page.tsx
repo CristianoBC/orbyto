@@ -411,7 +411,7 @@ export default function ServiceOrderDetailPage() {
                   ref={inputRef}
                   type="file"
                   disabled={uploading}
-                  accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt"
+                  accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.csv,.txt"
                   onChange={(event) => void upload(event.target.files?.[0])}
                 />
                 <strong>

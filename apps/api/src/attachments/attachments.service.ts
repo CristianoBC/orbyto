@@ -67,6 +67,21 @@ export class AttachmentsService implements OnModuleInit {
     return extname(basename(fileName)).toLowerCase();
   }
 
+  private safeOriginalName(fileName: string) {
+    const cleaned = basename(fileName).replace(/[\u0000-\u001f\u007f<>:"/\\|?*]+/g, '_').trim();
+    return cleaned.slice(0, 240) || 'arquivo';
+  }
+
+  private validateFileSignature(file: Express.Multer.File) {
+    const extension = AttachmentsService.getFileExtension(file.originalname);
+    const bytes = file.buffer;
+    const valid = extension === '.pdf' ? bytes.subarray(0, 5).toString() === '%PDF-'
+      : extension === '.png' ? bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+      : extension === '.jpg' || extension === '.jpeg' ? bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+      : true;
+    if (!valid) throw new BadRequestException('O conteúdo do arquivo não corresponde ao tipo informado.');
+  }
+
   async uploadForServiceOrder(
     user: AuthUser,
     serviceOrderId: string,
@@ -80,6 +95,8 @@ export class AttachmentsService implements OnModuleInit {
     if (!file) {
       throw new BadRequestException('Envie um arquivo no campo file.');
     }
+    this.validateFileSignature(file);
+    const originalName = this.safeOriginalName(file.originalname);
 
     const serviceOrder = await this.validateServiceOrderAccess(
       user,
@@ -128,7 +145,7 @@ export class AttachmentsService implements OnModuleInit {
             refId: serviceOrderId,
             serviceOrderId,
             fileName,
-            originalName: basename(file.originalname),
+            originalName,
             mimeType: file.mimetype || 'application/octet-stream',
             size: file.size,
             storageKey,
@@ -152,7 +169,7 @@ export class AttachmentsService implements OnModuleInit {
           {
             tenantId: user.tenantId,
             title: 'Novo anexo na ordem de serviço',
-            message: `${user.name} adicionou o arquivo “${basename(file.originalname)}”.`,
+            message: `${user.name} adicionou o arquivo “${originalName}”.`,
             type: NotificationType.INFO,
             entity: NotificationEntity.SERVICE_ORDER,
             entityId: serviceOrderId,
@@ -170,7 +187,7 @@ export class AttachmentsService implements OnModuleInit {
       user,
       serviceOrder,
       recipients,
-      basename(file.originalname),
+      originalName,
     ).catch(() => undefined);
     return attachment;
   }
@@ -201,6 +218,8 @@ export class AttachmentsService implements OnModuleInit {
 
   private async uploadForTarget(user: AuthUser, refType: RefType, refId: string, file?: Express.Multer.File) {
     if (!file) throw new BadRequestException('Envie um arquivo no campo file.');
+    this.validateFileSignature(file);
+    const originalName = this.safeOriginalName(file.originalname);
     const recipients = refType === RefType.PROJECT
       ? [(await this.validateProjectAccess(user, refId, true)).ownerId]
       : await this.validateTaskAccess(user, refId, true).then((task) => [task.assigneeId, task.project.ownerId]);
@@ -214,10 +233,10 @@ export class AttachmentsService implements OnModuleInit {
     await writeFile(filePath, file.buffer, { flag: 'wx' });
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const attachment = await tx.attachment.create({ data: { tenantId: user.tenantId, uploadedById: user.id, refType, refId, ...(refType === RefType.PROJECT ? { projectId: refId } : { taskId: refId }), fileName, originalName: basename(file.originalname), mimeType: file.mimetype || 'application/octet-stream', size: file.size, storageKey }, include: attachmentInclude });
+        const attachment = await tx.attachment.create({ data: { tenantId: user.tenantId, uploadedById: user.id, refType, refId, ...(refType === RefType.PROJECT ? { projectId: refId } : { taskId: refId }), fileName, originalName, mimeType: file.mimetype || 'application/octet-stream', size: file.size, storageKey }, include: attachmentInclude });
         const isProject = refType === RefType.PROJECT;
         await tx.auditLog.create({ data: { tenantId: user.tenantId, userId: user.id, action: AuditAction.ATTACHMENT, entity: isProject ? 'Project' : 'Task', entityId: refId, metadata: { event: isProject ? 'PROJECT_ATTACHMENT_UPLOADED' : 'TASK_ATTACHMENT_UPLOADED', attachmentId: attachment.id, fileName } } });
-        await this.notifications.createForUsers(recipients.filter((id): id is string => Boolean(id) && id !== user.id), { tenantId: user.tenantId, title: isProject ? 'Novo anexo no projeto' : 'Novo anexo na tarefa', message: `${user.name} adicionou o arquivo “${basename(file.originalname)}”.`, type: NotificationType.INFO, entity: isProject ? NotificationEntity.PROJECT : NotificationEntity.TASK, entityId: refId }, tx);
+        await this.notifications.createForUsers(recipients.filter((id): id is string => Boolean(id) && id !== user.id), { tenantId: user.tenantId, title: isProject ? 'Novo anexo no projeto' : 'Novo anexo na tarefa', message: `${user.name} adicionou o arquivo “${originalName}”.`, type: NotificationType.INFO, entity: isProject ? NotificationEntity.PROJECT : NotificationEntity.TASK, entityId: refId }, tx);
         return attachment;
       });
     } catch (error) { await unlink(filePath).catch(() => undefined); throw error; }

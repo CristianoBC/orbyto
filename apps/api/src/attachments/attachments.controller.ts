@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Controller,
   Get,
   Param,
@@ -19,47 +18,13 @@ import { PermissionModule } from '@prisma/client';
 import { RequirePermission } from '../permissions/permissions.decorator';
 import { PermissionsGuard } from '../permissions/permissions.guard';
 
-const maximumFileSize = 10 * 1024 * 1024;
-const allowedExtensions = new Set([
-  '.pdf',
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.webp',
-  '.doc',
-  '.docx',
-  '.xls',
-  '.xlsx',
-  '.csv',
-  '.txt',
-]);
-
 @Controller('attachments')
 @UseGuards(JwtAuthGuard)
 export class AttachmentsController {
   constructor(private readonly attachmentsService: AttachmentsService) {}
 
   @Post('service-order/:serviceOrderId')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      limits: { files: 1, fileSize: maximumFileSize },
-      fileFilter: (_request, file, callback) => {
-        const extension = AttachmentsService.getFileExtension(file.originalname);
-
-        if (!allowedExtensions.has(extension)) {
-          callback(
-            new BadRequestException(
-              'Tipo de arquivo não permitido. Envie um documento ou imagem suportado.',
-            ),
-            false,
-          );
-          return;
-        }
-
-        callback(null, true);
-      },
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file'))
   uploadForServiceOrder(
     @CurrentUser() user: AuthUser,
     @Param('serviceOrderId') serviceOrderId: string,
@@ -73,7 +38,7 @@ export class AttachmentsController {
   }
 
   @Post('project/:projectId')
-  @UseInterceptors(FileInterceptor('file', { limits: { files: 1, fileSize: maximumFileSize }, fileFilter: (_request, file, callback) => { const extension = AttachmentsService.getFileExtension(file.originalname); callback(allowedExtensions.has(extension) ? null : new BadRequestException('Tipo de arquivo não permitido. Envie um documento ou imagem suportado.'), allowedExtensions.has(extension)); } }))
+  @UseInterceptors(FileInterceptor('file'))
   uploadForProject(@CurrentUser() user: AuthUser, @Param('projectId') projectId: string, @UploadedFile() file?: Express.Multer.File) {
     return this.attachmentsService.uploadForProject(user, projectId, file);
   }
@@ -88,7 +53,7 @@ export class AttachmentsController {
   @Post('task/:taskId')
   @UseGuards(PermissionsGuard)
   @RequirePermission(PermissionModule.TASKS, 'edit')
-  @UseInterceptors(FileInterceptor('file', { limits: { files: 1, fileSize: maximumFileSize }, fileFilter: (_request, file, callback) => { const extension = AttachmentsService.getFileExtension(file.originalname); callback(allowedExtensions.has(extension) ? null : new BadRequestException('Tipo de arquivo não permitido. Envie um documento ou imagem suportado.'), allowedExtensions.has(extension)); } }))
+  @UseInterceptors(FileInterceptor('file'))
   uploadForTask(@CurrentUser() user: AuthUser, @Param('taskId') taskId: string, @UploadedFile() file?: Express.Multer.File) {
     return this.attachmentsService.uploadForTask(user, taskId, file);
   }

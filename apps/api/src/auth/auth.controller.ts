@@ -9,26 +9,31 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { RegisterRequesterDto } from './dto/register-requester.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60_000, blockDuration: 60_000 } })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
 
   @Post('register-requester')
+  @Throttle({ default: { limit: 5, ttl: 60_000, blockDuration: 60_000 } })
   registerRequester(@Body() dto: RegisterRequesterDto) { return this.authService.registerRequester(dto); }
 
   @Get('requester-registration-settings')
   requesterRegistrationSettings() { return this.authService.requesterRegistrationSettings(); }
 
   @Post('forgot-password')
+  @Throttle({ default: { limit: 3, ttl: 15 * 60_000, blockDuration: 15 * 60_000 } })
   forgotPassword(@Body() dto: ForgotPasswordDto) { return this.authService.forgotPassword(dto); }
 
   @Post('reset-password')
+  @Throttle({ default: { limit: 5, ttl: 15 * 60_000, blockDuration: 15 * 60_000 } })
   resetPassword(@Body() dto: ResetPasswordDto) { return this.authService.resetPassword(dto); }
 
   @Get('validate-reset-token')
@@ -38,6 +43,7 @@ export class AuthController {
   validateInviteToken(@Query('token') token: string) { return this.authService.validateInviteToken(token); }
 
   @Post('accept-invite')
+  @Throttle({ default: { limit: 5, ttl: 15 * 60_000, blockDuration: 15 * 60_000 } })
   acceptInvite(@Body() dto: AcceptInviteDto) { return this.authService.acceptInvite(dto); }
 
   @UseGuards(JwtAuthGuard)

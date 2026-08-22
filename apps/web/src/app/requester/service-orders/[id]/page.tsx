@@ -302,7 +302,7 @@ export default function RequesterServiceOrderDetailPage() {
                 ref={inputRef}
                 type="file"
                 disabled={uploading}
-                accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt"
+                accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.csv,.txt"
                 onChange={(e) => void upload(e.target.files?.[0])}
               />
               <strong>

@@ -283,12 +283,12 @@ export class UsersService {
   }
 
   private async deliverInvitation(actor: AuthUser, target: { id: string; name: string; email: string }, token: string, expiresAt: Date, failureOperation: string) {
-    const webUrl = (this.config.get<string>('APP_WEB_URL') ?? this.config.get<string>('WEB_URL') ?? 'http://localhost:3000').replace(/\/$/, '');
+    const webUrl = (this.config.get<string>('FRONTEND_URL') ?? this.config.get<string>('APP_WEB_URL') ?? this.config.get<string>('WEB_URL') ?? 'http://localhost:3000').replace(/\/$/, '');
     const inviteUrl = `${webUrl}/accept-invite?token=${encodeURIComponent(token)}`;
     const delivery = await this.mail.sendUserInvitation({ to: target.email, name: target.name, inviteUrl, expiresInHours: this.inviteExpiryHours() });
     if (delivery.sent) return;
     await this.prisma.auditLog.create({ data: { tenantId: actor.tenantId, userId: actor.id, action: AuditAction.UPDATE, entity: 'User', entityId: target.id, metadata: { operation: failureOperation, reason: delivery.reason } } });
-    if ((this.config.get<string>('NODE_ENV') ?? 'development') !== 'production') console.warn(`[user-invite] E-mail não enviado (${delivery.reason}). Link de desenvolvimento: ${inviteUrl}`);
+    if ((this.config.get<string>('NODE_ENV') ?? 'development') !== 'production') console.warn(`[user-invite] E-mail não enviado (${delivery.reason}).`);
     throw new ServiceUnavailableException('O usuário foi criado, mas não foi possível enviar o convite. Tente reenviar em instantes.');
   }
 

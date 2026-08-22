@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { MailModule } from '../mail/mail.module';
+import { getJwtExpiresIn, getJwtSecret } from '../common/security.config';
 
 @Module({
   imports: [
@@ -15,16 +16,8 @@ import { MailModule } from '../mail/mail.module';
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        const secret = configService.get<string>('JWT_ACCESS_SECRET');
-
-        if (!secret) {
-          throw new Error('JWT_ACCESS_SECRET não configurado.');
-        }
-
-        const expiresIn =
-          configService.get<SignOptions['expiresIn']>(
-            'JWT_ACCESS_EXPIRES_IN',
-          ) ?? '15m';
+        const secret = getJwtSecret(configService);
+        const expiresIn = getJwtExpiresIn(configService) as SignOptions['expiresIn'];
 
         return {
           secret,

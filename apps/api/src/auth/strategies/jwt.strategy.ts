@@ -5,6 +5,7 @@ import { UserStatus } from '@prisma/client';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthUser } from '../auth.types';
+import { getJwtSecret } from '../../common/security.config';
 
 type JwtPayload = {
   sub: string;
@@ -19,11 +20,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     private readonly prisma: PrismaService,
     configService: ConfigService,
   ) {
-    const secret = configService.get<string>('JWT_ACCESS_SECRET');
-
-    if (!secret) {
-      throw new Error('JWT_ACCESS_SECRET não configurado.');
-    }
+    const secret = getJwtSecret(configService);
 
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),

@@ -34,7 +34,7 @@ export class MailService {
     private readonly preferences: NotificationPreferencesService,
   ) {
     const host = config.get<string>('SMTP_HOST')?.trim();
-    const address = config.get<string>('MAIL_FROM_ADDRESS')?.trim();
+    const address = (config.get<string>('MAIL_FROM_ADDRESS') ?? config.get<string>('MAIL_FROM'))?.trim();
     this.from = address
       ? {
           name: config.get<string>('MAIL_FROM_NAME')?.trim() || 'Orbyto',
