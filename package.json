@@ -9,7 +9,12 @@
     "db:generate": "prisma generate --schema packages/database/prisma/schema.prisma",
     "db:migrate": "prisma migrate dev --schema packages/database/prisma/schema.prisma",
     "db:studio": "prisma studio",
-    "db:seed": "tsx packages/database/prisma/seed.ts"
+    "db:seed": "tsx packages/database/prisma/seed.ts",
+    "backup:db": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup-database.ps1",
+    "backup:uploads": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup-uploads.ps1",
+    "backup:all": "npm run backup:db && npm run backup:uploads",
+    "backup:cleanup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cleanup-backups.ps1",
+    "maintenance:check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/maintenance-check.ps1"
   },
   "workspaces": [
     "apps/api",

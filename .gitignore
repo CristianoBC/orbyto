@@ -36,3 +36,12 @@ postgres-data/
 # Uploads locais
 storage/
 uploads/
+apps/api/storage/
+
+# Backups locais (manter apenas a estrutura de diretórios)
+backups/database/*.sql
+backups/database/*.dump
+backups/uploads/*.zip
+backups/**/*.log
+!backups/uploads/
+!backups/uploads/.gitkeep
