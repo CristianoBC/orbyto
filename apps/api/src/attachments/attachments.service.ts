@@ -25,6 +25,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MailService } from '../mail/mail.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { ConfigService } from '@nestjs/config';
 
 const attachmentInclude = {
   uploadedBy: {
@@ -46,18 +47,20 @@ const administrativeRoles: UserRole[] = [
 
 @Injectable()
 export class AttachmentsService implements OnModuleInit {
-  private readonly uploadsDirectory = resolve(
-    process.cwd(),
-    'storage',
-    'uploads',
-  );
+  private readonly uploadsDirectory: string;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly mail: MailService,
     private readonly permissions: PermissionsService,
-  ) {}
+    config: ConfigService,
+  ) {
+    this.uploadsDirectory = resolve(
+      process.cwd(),
+      config.get<string>('UPLOAD_DIR')?.trim() || 'storage/uploads',
+    );
+  }
 
   async onModuleInit() {
     await mkdir(this.uploadsDirectory, { recursive: true });
