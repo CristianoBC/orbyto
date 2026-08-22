@@ -19,7 +19,7 @@ const items: readonly [string, string, string, PermissionModule][] = [
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose(): void }) {
   const pathname = usePathname(); const { can, user, permissions } = useAuth();
-  const visible = items.filter(([href, , , module]) => can(module) && (!['/permissions', '/audit-logs'].includes(href) || ['OWNER', 'ADMIN'].includes(user?.role ?? '')) && (href !== '/permissions' || can('USERS', 'manage')));
+  const visible = items.filter(([href, , , module]) => can(module) && (href !== '/audit-logs' || user?.role !== 'REQUESTER') && (href !== '/permissions' || (['OWNER', 'ADMIN'].includes(user?.role ?? '') && can('USERS', 'manage'))));
   const navigation = hasReportsAccess(user?.role, permissions)
     ? [...visible.slice(0, 1), ['/reports', '▤', 'Relatórios', 'DASHBOARD'] as const, ...visible.slice(1)]
     : visible;
