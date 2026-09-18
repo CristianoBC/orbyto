@@ -41,8 +41,8 @@ export default function LoginPage() {
               className="login-brand-logo"
               src="/orbyto-logomarca.png"
               alt="Orbyto"
-              width={1024}
-              height={1024}
+              width={856}
+              height={232}
               priority
             />
           </div>
@@ -69,8 +69,8 @@ export default function LoginPage() {
             <Image
               src="/orbyto-logomarca.png"
               alt="Orbyto"
-              width={1024}
-              height={1024}
+              width={856}
+              height={232}
               priority
             />
           </div>

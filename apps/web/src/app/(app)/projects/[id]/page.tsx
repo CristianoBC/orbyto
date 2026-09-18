@@ -459,15 +459,16 @@ export default function ProjectDetailPage() {
                           : "não definido"}
                       </small>
                     </div>
-                    <Link className="button ghost task-edit-button" href={`/tasks/${task.id}`}>Ver detalhes</Link>
-                    {canEditTask && <div className="project-task-actions">
-                      <button
-                        className="button ghost task-edit-button"
-                        onClick={() => showEditModal(task)}
-                      >
-                        Editar
-                      </button>
-                      <label className="quick-status">
+                    <div className="project-task-actions">
+                      <Link className="button ghost task-edit-button" href={`/tasks/${task.id}`}>Ver detalhes</Link>
+                      {canEditTask && <>
+                        <button
+                          className="button ghost task-edit-button"
+                          onClick={() => showEditModal(task)}
+                        >
+                          Editar
+                        </button>
+                        <label className="quick-status">
                         Status
                         <select
                           value={task.status}
@@ -485,8 +486,9 @@ export default function ProjectDetailPage() {
                             </option>
                           ))}
                         </select>
-                      </label>
-                    </div>}
+                        </label>
+                      </>}
+                    </div>
                   </article>
                 ))}
               </div>
