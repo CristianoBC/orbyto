@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -54,5 +55,11 @@ export class ProjectsController {
     @Body() dto: UpdateProjectDto,
   ) {
     return this.projectsService.update(user, id, dto);
+  }
+
+  @Delete(':id')
+  @RequirePermission(PermissionModule.PROJECTS, 'delete')
+  remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.projectsService.remove(user, id);
   }
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Field, FormActions, SelectPriority } from "@/components/ui/forms";
 import { Modal } from "@/components/ui/modal";
 import { DailyLogList } from "@/components/daily-logs/daily-log-list";
@@ -43,6 +43,7 @@ type ProjectForm = Omit<UpdateProject, "tags"> & {
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const { user, can } = useAuth();
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -73,6 +74,7 @@ export default function ProjectDetailPage() {
   const canEditTask = can("TASKS", "edit");
   const canCreateDailyLog = can("DAILY_LOGS", "create");
   const canChangeOwner = can("PROJECTS", "manage");
+  const canDeleteProject = can("PROJECTS", "delete") && ["OWNER", "ADMIN"].includes(user?.role ?? "");
   const responsibleOptions =
     editing?.assignee && !users.some((item) => item.id === editing.assignee?.id)
       ? [
@@ -233,6 +235,19 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function deleteProject() {
+    if (!project) return;
+    const confirmation = window.prompt(`Esta ação é irreversível. Para excluir o projeto, digite exatamente: ${project.name}`);
+    if (confirmation !== project.name) return;
+    setError(""); setNotice("");
+    try {
+      await apiRequest(`/projects/${id}`, { method: "DELETE" });
+      router.push("/projects");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível excluir o projeto.");
+    }
+  }
+
   function showEditModal(task: Task) {
     setEditing(task);
     setForm({
@@ -363,6 +378,11 @@ export default function ProjectDetailPage() {
           {canEditProject && (
             <button className="button ghost" onClick={showProjectEditor}>
               Editar projeto
+            </button>
+          )}
+          {canDeleteProject && (
+            <button className="button danger-ghost" onClick={() => void deleteProject()}>
+              Excluir projeto
             </button>
           )}
           {canCreateTask && <button className="button primary" onClick={showTaskModal}>

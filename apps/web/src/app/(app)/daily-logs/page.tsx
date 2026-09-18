@@ -12,7 +12,7 @@ import { useAuth } from '@/contexts/auth-context';
 
 export default function DailyLogsPage() {
   const { can, user } = useAuth();
-  const canCreate = can('DAILY_LOGS', 'create'); const canEdit = can('DAILY_LOGS', 'edit');
+  const canCreate = can('DAILY_LOGS', 'create'); const canEdit = can('DAILY_LOGS', 'edit'); const canDelete = can('DAILY_LOGS', 'delete');
   const [items, setItems] = useState<DailyLog[]>([]); const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [notice, setNotice] = useState('');
   const [open, setOpen] = useState(false); const [editing, setEditing] = useState<DailyLog | null>(null);
@@ -27,6 +27,23 @@ export default function DailyLogsPage() {
   function showCreate() { setEditing(null); setNotice(''); setOpen(true); }
   function showEdit(item: DailyLog) { setEditing(item); setNotice(''); setOpen(true); }
   async function saved(message: string) { setOpen(false); setEditing(null); setNotice(message); await load(); }
+  async function changeStatus(item: DailyLog, action: 'complete' | 'reopen') {
+    setError(''); setNotice('');
+    try {
+      await apiRequest(`/daily-logs/${item.id}/${action}`, { method: 'PATCH' });
+      setNotice(action === 'complete' ? 'Registro diário concluído.' : 'Registro diário reaberto.');
+      await load();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Não foi possível alterar o status do registro.'); }
+  }
+  async function remove(item: DailyLog) {
+    if (!window.confirm(`Excluir o registro diário “${item.title}”?`)) return;
+    setError(''); setNotice('');
+    try {
+      await apiRequest(`/daily-logs/${item.id}`, { method: 'DELETE' });
+      setNotice('Registro diário excluído.');
+      await load();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Não foi possível excluir o registro.'); }
+  }
   const hasFilters = !!(search || projectId || startDate || endDate);
   return <>
     <PageHeader title="Registros Diários" text="Registre e acompanhe a evolução do seu trabalho em projetos." action={canCreate ? showCreate : undefined} label={canCreate ? 'Novo registro' : undefined} />
@@ -39,7 +56,7 @@ export default function DailyLogsPage() {
       {hasFilters && <button className="kanban-clear" onClick={() => { setSearch(''); setProjectId(''); setStartDate(''); setEndDate(''); }}>Limpar filtros</button>}
     </div>
     {error && <ErrorState message={error} retry={load} />}
-    {loading ? <LoadingState /> : !filtered.length ? <EmptyState text={hasFilters ? 'Nenhum registro corresponde aos filtros.' : 'Nenhum registro diário encontrado.'} /> : <><p className="daily-log-count"><strong>{filtered.length}</strong> {filtered.length === 1 ? 'registro encontrado' : 'registros encontrados'}</p><DailyLogList items={filtered} onEdit={canEdit ? showEdit : undefined} /></>}
+    {loading ? <LoadingState /> : !filtered.length ? <EmptyState text={hasFilters ? 'Nenhum registro corresponde aos filtros.' : 'Nenhum registro diário encontrado.'} /> : <><p className="daily-log-count"><strong>{filtered.length}</strong> {filtered.length === 1 ? 'registro encontrado' : 'registros encontrados'}</p><DailyLogList items={filtered} onEdit={canEdit ? showEdit : undefined} onComplete={canEdit ? (item) => void changeStatus(item, 'complete') : undefined} onReopen={canEdit ? (item) => void changeStatus(item, 'reopen') : undefined} onDelete={canDelete ? (item) => void remove(item) : undefined} /></>}
     {open && <DailyLogModal projects={projects} editing={editing} onClose={() => setOpen(false)} onSaved={saved} />}
   </>;
 }

@@ -11,6 +11,7 @@ export interface DailyLog {
   author?: { id: string; name: string; email: string } | null;
   project?: Pick<Project, 'id'> & { title: string } | null;
   taskId: null;
+  status: 'COMPLETED' | 'IN_PROGRESS' | 'PENDING' | 'WAITING_RETURN';
   createdAt: string;
   updatedAt: string;
 }

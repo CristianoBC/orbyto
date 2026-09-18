@@ -347,6 +347,54 @@ export class ProjectsService {
     return this.toProjectResponse(updated);
   }
 
+  async remove(user: AuthUser, id: string) {
+    if (user.role !== UserRole.OWNER && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Somente OWNER ou ADMIN pode excluir projetos.');
+    }
+
+    const project = await this.prisma.project.findFirst({
+      where: { id, tenantId: user.tenantId },
+      select: {
+        id: true,
+        title: true,
+        _count: { select: { tasks: true, dailyLogs: true, comments: true, attachments: true } },
+      },
+    });
+    if (!project) throw new NotFoundException('Projeto não encontrado.');
+
+    const notificationCount = await this.prisma.notification.count({
+      where: { tenantId: user.tenantId, entity: NotificationEntity.PROJECT, entityId: project.id },
+    });
+    const related = {
+      tarefas: project._count.tasks,
+      registrosDiarios: project._count.dailyLogs,
+      comentarios: project._count.comments,
+      anexos: project._count.attachments,
+      notificacoes: notificationCount,
+    };
+    if (Object.values(related).some((count) => count > 0)) {
+      throw new BadRequestException({
+        message: 'O projeto não pode ser excluído porque possui dados relacionados. Remova ou trate esses vínculos antes de tentar novamente.',
+        related,
+      });
+    }
+
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.project.delete({ where: { id: project.id } });
+      await transaction.auditLog.create({
+        data: {
+          tenantId: user.tenantId,
+          userId: user.id,
+          action: AuditAction.DELETE,
+          entity: 'Project',
+          entityId: project.id,
+          metadata: { title: project.title },
+        },
+      });
+    });
+    return { deleted: true };
+  }
+
   private async emailOwner(
     user: AuthUser,
     project: ProjectResult,

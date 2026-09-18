@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { AuditAction, Prisma, UserRole } from '@prisma/client';
+import { AuditAction, DailyLogStatus, Prisma, UserRole } from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateDailyLogDto } from './dto/create-daily-log.dto';
@@ -57,6 +57,7 @@ export class DailyLogsService {
           title: dto.title,
           description: dto.content,
           type: dto.type,
+          status: DailyLogStatus.IN_PROGRESS,
           date: dto.logDate ?? new Date(),
           time:
             dto.workedHours === undefined ? undefined : String(dto.workedHours),
@@ -218,6 +219,68 @@ export class DailyLogsService {
         throw new NotFoundException('Registro diário não encontrado.');
       return this.toResponse(updated);
     });
+  }
+
+  async complete(user: AuthUser, id: string) {
+    return this.changeStatus(user, id, DailyLogStatus.COMPLETED);
+  }
+
+  async reopen(user: AuthUser, id: string) {
+    return this.changeStatus(user, id, DailyLogStatus.IN_PROGRESS);
+  }
+
+  async remove(user: AuthUser, id: string) {
+    const current = await this.findMutableLog(user, id, 'excluir');
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.dailyLog.delete({ where: { id: current.id } });
+      await transaction.auditLog.create({
+        data: {
+          tenantId: user.tenantId,
+          userId: user.id,
+          action: AuditAction.DELETE,
+          entity: 'DailyLog',
+          entityId: current.id,
+          metadata: { title: current.title, projectId: current.projectId },
+        },
+      });
+    });
+    return { deleted: true };
+  }
+
+  private async changeStatus(user: AuthUser, id: string, status: DailyLogStatus) {
+    const current = await this.findMutableLog(user, id, 'alterar o status de');
+    if (current.status === status) return this.findOne(user, id);
+
+    return this.prisma.$transaction(async (transaction) => {
+      const updated = await transaction.dailyLog.update({
+        where: { id: current.id },
+        data: { status },
+        include: dailyLogInclude,
+      });
+      await transaction.auditLog.create({
+        data: {
+          tenantId: user.tenantId,
+          userId: user.id,
+          action: status === DailyLogStatus.COMPLETED ? AuditAction.COMPLETE : AuditAction.STATUS_CHANGE,
+          entity: 'DailyLog',
+          entityId: current.id,
+          metadata: { previousStatus: current.status, newStatus: status },
+        },
+      });
+      return this.toResponse(updated);
+    });
+  }
+
+  private async findMutableLog(user: AuthUser, id: string, action: string) {
+    const current = await this.prisma.dailyLog.findFirst({
+      where: { id, tenantId: user.tenantId },
+      select: { id: true, userId: true, title: true, projectId: true, status: true },
+    });
+    if (!current) throw new NotFoundException('Registro diário não encontrado.');
+    if (!administrativeRoles.includes(user.role) && current.userId !== user.id) {
+      throw new ForbiddenException(`Você não pode ${action} este registro diário.`);
+    }
+    return current;
   }
 
   private findProject(id: string, tenantId: string) {

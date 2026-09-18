@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -72,5 +73,23 @@ export class DailyLogsController {
     @Body() dto: UpdateDailyLogDto,
   ) {
     return this.dailyLogsService.update(user, id, dto);
+  }
+
+  @Patch(':id/complete')
+  @RequirePermission(PermissionModule.DAILY_LOGS, 'edit')
+  complete(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.dailyLogsService.complete(user, id);
+  }
+
+  @Patch(':id/reopen')
+  @RequirePermission(PermissionModule.DAILY_LOGS, 'edit')
+  reopen(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.dailyLogsService.reopen(user, id);
+  }
+
+  @Delete(':id')
+  @RequirePermission(PermissionModule.DAILY_LOGS, 'delete')
+  remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.dailyLogsService.remove(user, id);
   }
 }
