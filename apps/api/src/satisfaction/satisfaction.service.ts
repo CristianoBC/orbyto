@@ -91,7 +91,7 @@ export class SatisfactionService {
     const staff = await this.prisma.user.findMany({ where: { tenantId: user.tenantId, status: UserStatus.ACTIVE, role: { in: [UserRole.OWNER, UserRole.ADMIN] } }, select: { id: true, name: true, email: true } });
     await this.notifications.createForUsers(staff.map(({ id }) => id), { tenantId: user.tenantId, title: 'Avaliação baixa recebida', message: `${user.name} avaliou a OS “${order.title}” com nota ${rating}.`, type: NotificationType.ACTION_REQUIRED, entity: NotificationEntity.SATISFACTION, entityId: satisfactionId });
     for (const recipient of staff) {
-      const delivery = await this.mail.sendSatisfactionLowRatingEmail({ tenantId: user.tenantId, to: recipient.email, recipientName: recipient.name, title: order.title, url: this.mail.webUrl('/satisfaction'), fields: [{ label: 'Solicitante', value: user.name }, { label: 'Nota', value: String(rating) }] });
+      const delivery = await this.mail.sendSatisfactionLowRatingEmail({ tenantId: user.tenantId, to: recipient.email, recipientName: recipient.name, title: order.title, url: this.mail.webUrl(`/service-orders/${order.id}`), fields: [{ label: 'Solicitante', value: user.name }, { label: 'Nota', value: String(rating) }] });
       await this.mail.auditOperationalDelivery({ tenantId: user.tenantId, actorId: user.id, entity: 'ServiceOrderSatisfaction', entityId: satisfactionId, event: 'SATISFACTION_LOW_RATING_RECEIVED', recipient: recipient.email }, delivery);
     }
   }

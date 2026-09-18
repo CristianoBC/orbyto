@@ -287,12 +287,23 @@ export class DeadlineAlertsService implements OnModuleInit {
       }
       if (!newlyCreated.length) continue;
       summary.emailsAttempted++;
+      const mailItems = newlyCreated.map((item) =>
+        recipient.role === UserRole.REQUESTER &&
+        item.entity === NotificationEntity.SERVICE_ORDER
+          ? {
+              ...item,
+              url: this.mail.webUrl(
+                `/requester/service-orders/${item.id}`,
+              ),
+            }
+          : item,
+      );
       const delivery = await this.mail.sendDeadlineAlertSummaryEmail({
         tenantId,
         to: recipient.email,
         recipientName: recipient.name,
-        overdue: newlyCreated.filter((item) => item.overdue),
-        upcoming: newlyCreated.filter((item) => !item.overdue),
+        overdue: mailItems.filter((item) => item.overdue),
+        upcoming: mailItems.filter((item) => !item.overdue),
       });
       if (delivery.sent) summary.emailsSent++;
       else {

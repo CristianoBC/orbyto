@@ -147,7 +147,7 @@ export class NotificationsService {
         id: { in: [...new Set(userIds)] },
         status: UserStatus.ACTIVE,
       },
-      select: { id: true, name: true, email: true },
+      select: { id: true, name: true, email: true, role: true },
     });
   }
 }

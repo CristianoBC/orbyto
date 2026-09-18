@@ -11,18 +11,46 @@ import {
 } from "@/components/ui/page-state";
 import { apiRequest } from "@/lib/api";
 import { serviceOrderDeadline } from "@/lib/deadline";
-import type { ServiceOrder } from "@/types/service-order";
+import type { ServiceOrder, ServiceOrderStatus } from "@/types/service-order";
 
+type RequesterFilter = "ACTIVE" | "OPEN_RECEIVED" | ServiceOrderStatus | "ALL";
+
+const filters: { value: RequesterFilter; label: string }[] = [
+  { value: "ACTIVE", label: "Ativas" },
+  { value: "OPEN_RECEIVED", label: "Abertas/Recebidas" },
+  { value: "IN_PROGRESS", label: "Em andamento" },
+  { value: "COMPLETED", label: "Concluídas" },
+  { value: "CANCELED", label: "Canceladas" },
+  { value: "ALL", label: "Todas" },
+];
 
 export default function RequesterServiceOrdersPage() {
   const [items, setItems] = useState<ServiceOrder[]>([]);
+  const [filter, setFilter] = useState<RequesterFilter>("ACTIVE");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState("");
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (pageNumber = 1) => {
+    if (pageNumber === 1) setLoading(true);
+    else setLoadingMore(true);
     setError("");
     try {
-      setItems(await apiRequest<ServiceOrder[]>("/service-orders/my"));
+      const query = new URLSearchParams();
+      if (filter === "ALL") query.set("view", "ALL");
+      else if (filter === "OPEN_RECEIVED") query.set("view", "OPEN_RECEIVED");
+      else if (filter !== "ACTIVE") {
+        query.set("view", "ALL");
+        query.set("status", filter);
+      }
+      query.set("page", String(pageNumber));
+      query.set("limit", "50");
+      const suffix = query.size ? `?${query.toString()}` : "";
+      const result = await apiRequest<ServiceOrder[]>(`/service-orders/my${suffix}`);
+      setItems((current) => pageNumber === 1 ? result : [...current, ...result]);
+      setPage(pageNumber);
+      setHasMore(result.length === 50);
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -31,10 +59,11 @@ export default function RequesterServiceOrdersPage() {
       );
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, []);
+  }, [filter]);
   useEffect(() => {
-    void load();
+    void load(1);
   }, [load]);
 
   return (
@@ -49,7 +78,20 @@ export default function RequesterServiceOrdersPage() {
           + Nova solicitação
         </Link>
       </div>
-      {error && <ErrorState message={error} retry={load} />}
+      {error && <ErrorState message={error} retry={() => load(1)} />}
+      <div className="requester-status-filter" role="group" aria-label="Filtrar solicitações por status">
+        {filters.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={`button small ${filter === option.value ? "primary" : "ghost"}`}
+            onClick={() => setFilter(option.value)}
+            aria-pressed={filter === option.value}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
       {loading ? (
         <LoadingState />
       ) : !items.length ? (
@@ -87,6 +129,16 @@ export default function RequesterServiceOrdersPage() {
               </span>
             </Link>
           ))}
+          {hasMore && (
+            <button
+              type="button"
+              className="button ghost"
+              disabled={loadingMore}
+              onClick={() => void load(page + 1)}
+            >
+              {loadingMore ? "Carregando..." : "Carregar mais solicitações"}
+            </button>
+          )}
         </div>
       )}
     </>

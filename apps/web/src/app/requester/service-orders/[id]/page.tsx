@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { ApiError, apiDownload, apiRequest } from "@/lib/api";
 import { labels } from "@/components/ui/page-state";
+import { useAuth } from "@/contexts/auth-context";
 import type {
   ServiceOrder,
   ServiceOrderAttachment,
@@ -31,6 +32,7 @@ const isOverdue = (order: ServiceOrder) => Boolean(order.dueDate && !closedStatu
 
 export default function RequesterServiceOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
   const [order, setOrder] = useState<ServiceOrder | null>(null);
   const [comments, setComments] = useState<ServiceOrderComment[]>([]);
@@ -50,6 +52,8 @@ export default function RequesterServiceOrderDetailPage() {
   const [lowRatingReason, setLowRatingReason] = useState("");
   const [satisfactionError, setSatisfactionError] = useState("");
   const [submittingSatisfaction, setSubmittingSatisfaction] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -144,6 +148,22 @@ export default function RequesterServiceOrderDetailPage() {
       setAttachmentError(message(reason, "Não foi possível enviar o arquivo."));
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function saveComment(commentId: string) {
+    if (!editingCommentText.trim()) return;
+    setCommentError("");
+    try {
+      const updated = await apiRequest<ServiceOrderComment>(`/comments/${commentId}`, {
+        method: "PATCH",
+        body: { text: editingCommentText.trim() },
+      });
+      setComments((current) => current.map((item) => item.id === commentId ? updated : item));
+      setEditingCommentId(null);
+      setEditingCommentText("");
+    } catch (reason) {
+      setCommentError(message(reason, "Não foi possível editar sua mensagem."));
     }
   }
 
@@ -247,7 +267,12 @@ export default function RequesterServiceOrderDetailPage() {
               <span>{comments.length}</span>
             </div>
             {commentError && <div className="alert error">{commentError}</div>}
-            <form className="comment-form" onSubmit={submitComment}>
+            {closedStatuses.includes(order.status) && (
+              <p className="inline-empty">
+                Esta solicitação está encerrada. As mensagens permanecem disponíveis somente para consulta.
+              </p>
+            )}
+            {!closedStatuses.includes(order.status) && <form className="comment-form" onSubmit={submitComment}>
               <textarea
                 rows={4}
                 maxLength={5000}
@@ -264,7 +289,7 @@ export default function RequesterServiceOrderDetailPage() {
                   {commenting ? "Enviando..." : "Enviar mensagem"}
                 </button>
               </div>
-            </form>
+            </form>}
             <div className="comment-list">
               {comments.length ? (
                 comments.map((comment) => (
@@ -275,9 +300,24 @@ export default function RequesterServiceOrderDetailPage() {
                     <div>
                       <header>
                         <strong>{comment.author.name}</strong>
-                        <time>{dateTime(comment.createdAt)}</time>
+                        <div className="comment-meta">
+                          <time>{dateTime(comment.createdAt)}</time>
+                          {editingCommentId !== comment.id && !closedStatuses.includes(order.status) && comment.author.id === user?.id && (
+                            <button type="button" className="comment-edit-action" onClick={() => { setEditingCommentId(comment.id); setEditingCommentText(comment.text); }}>Editar</button>
+                          )}
+                        </div>
                       </header>
-                      <p>{comment.text}</p>
+                      {editingCommentId === comment.id ? (
+                        <div className="comment-form">
+                          <textarea rows={3} maxLength={5000} value={editingCommentText} onChange={(event) => setEditingCommentText(event.target.value)} />
+                          <div>
+                            <button type="button" className="button ghost small" onClick={() => setEditingCommentId(null)}>Cancelar</button>
+                            <button type="button" className="button primary small" disabled={!editingCommentText.trim()} onClick={() => void saveComment(comment.id)}>Salvar</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p>{comment.text}</p>
+                      )}
                     </div>
                   </article>
                 ))
@@ -297,7 +337,12 @@ export default function RequesterServiceOrderDetailPage() {
             {attachmentError && (
               <div className="alert error">{attachmentError}</div>
             )}
-            <label className="upload-box">
+            {closedStatuses.includes(order.status) && (
+              <p className="inline-empty">
+                Esta solicitação está encerrada. Os anexos permanecem disponíveis somente para consulta.
+              </p>
+            )}
+            {!closedStatuses.includes(order.status) && <label className="upload-box">
               <input
                 ref={inputRef}
                 type="file"
@@ -309,7 +354,7 @@ export default function RequesterServiceOrderDetailPage() {
                 {uploading ? "Enviando arquivo..." : "Selecionar arquivo"}
               </strong>
               <small>Documentos ou imagens de até 10 MB</small>
-            </label>
+            </label>}
             <div className="attachment-list">
               {attachments.length ? (
                 attachments.map((attachment) => {

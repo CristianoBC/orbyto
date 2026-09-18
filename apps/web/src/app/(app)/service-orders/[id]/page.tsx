@@ -78,13 +78,18 @@ export default function ServiceOrderDetailPage() {
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState("");
   const [success, setSuccess] = useState("");
+  const [actionError, setActionError] = useState("");
   const [form, setForm] = useState<UpdateServiceOrder | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  const [changingStatus, setChangingStatus] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const canEdit = can("SERVICE_ORDERS", "edit");
   const canContribute = can("SERVICE_ORDERS", "create") || canEdit;
   const canAssign = can("SERVICE_ORDERS", "manage");
+  const isClosed = order ? closedStatuses.includes(order.status) : false;
 
   const loadOrder = useCallback(async () => {
     const serviceOrder = await apiRequest<ServiceOrder>(
@@ -154,7 +159,7 @@ export default function ServiceOrderDetailPage() {
     if (canAssign && users.length === 0) {
       setUsersLoading(true);
       try {
-        setUsers(await apiRequest<User[]>("/users"));
+        setUsers(await apiRequest<User[]>("/service-orders/eligible-responsibles"));
       } catch (reason) {
         setEditError(
           errorMessage(
@@ -245,6 +250,49 @@ export default function ServiceOrderDetailPage() {
     }
   }
 
+  async function changeStatus(status: ServiceOrderStatus) {
+    setChangingStatus(true);
+    setActionError("");
+    try {
+      await apiRequest(`/service-orders/${id}`, { method: "PATCH", body: { status } });
+      await load();
+      setSuccess(status === "COMPLETED" ? "Ordem de serviço concluída." : "Ordem de serviço reaberta.");
+    } catch (reason) {
+      setActionError(errorMessage(reason, "Não foi possível alterar o status da ordem."));
+    } finally {
+      setChangingStatus(false);
+    }
+  }
+
+  async function saveComment(commentId: string) {
+    if (!editingCommentText.trim()) return;
+    setCommentError("");
+    try {
+      const updated = await apiRequest<ServiceOrderComment>(`/comments/${commentId}`, {
+        method: "PATCH",
+        body: { text: editingCommentText.trim() },
+      });
+      setComments((current) => current.map((item) => item.id === commentId ? updated : item));
+      setEditingCommentId(null);
+      setEditingCommentText("");
+    } catch (reason) {
+      setCommentError(errorMessage(reason, "Não foi possível editar o comentário."));
+    }
+  }
+
+  async function deleteAttachment(attachment: ServiceOrderAttachment) {
+    const name = attachment.originalName || attachment.fileName;
+    if (!window.confirm(`Excluir o anexo “${name}”? Esta ação não pode ser desfeita.`)) return;
+    setAttachmentError("");
+    try {
+      await apiRequest(`/attachments/${attachment.id}`, { method: "DELETE" });
+      setAttachments((current) => current.filter((item) => item.id !== attachment.id));
+      setSuccess("Anexo excluído com sucesso.");
+    } catch (reason) {
+      setAttachmentError(errorMessage(reason, "Não foi possível excluir o anexo."));
+    }
+  }
+
   if (loading)
     return (
       <div className="detail-state" role="status">
@@ -285,6 +333,7 @@ export default function ServiceOrderDetailPage() {
           </button>
         </div>
       )}
+      {actionError && <div className="alert error" role="alert">{actionError}</div>}
       <header className="detail-header">
         <div>
           <p className="eyebrow">Ordem de Serviço</p>
@@ -292,13 +341,23 @@ export default function ServiceOrderDetailPage() {
           <p>Criada em {dateTime(order.createdAt)}</p>
         </div>
         <div className="detail-actions">
-          {canEdit && (
+          {canEdit && !isClosed && (
             <button
               type="button"
               className="button ghost"
               onClick={() => void openEditor()}
             >
               Editar
+            </button>
+          )}
+          {!isClosed && canEdit && (
+            <button type="button" className="button primary" disabled={changingStatus} onClick={() => void changeStatus("COMPLETED")}>
+              {changingStatus ? "Concluindo..." : "Concluir"}
+            </button>
+          )}
+          {isClosed && user?.role === "OWNER" && (
+            <button type="button" className="button primary" disabled={changingStatus} onClick={() => void changeStatus("OPEN")}>
+              {changingStatus ? "Reabrindo..." : "Reabrir"}
             </button>
           )}
           <div className="badges">
@@ -341,7 +400,7 @@ export default function ServiceOrderDetailPage() {
               </div>
               <span>{comments.length}</span>
             </div>
-            {canContribute && (
+            {canContribute && !isClosed && (
               <form className="comment-form" onSubmit={submitComment}>
                 {commentError && (
                   <div className="alert error" role="alert">
@@ -381,11 +440,26 @@ export default function ServiceOrderDetailPage() {
                     <div>
                       <header>
                         <strong>{comment.author.name}</strong>
-                        <time dateTime={comment.createdAt}>
-                          {dateTime(comment.createdAt)}
-                        </time>
+                        <div className="comment-meta">
+                          <time dateTime={comment.createdAt}>
+                            {dateTime(comment.createdAt)}
+                          </time>
+                          {editingCommentId !== comment.id && !isClosed && comment.author.id === user?.id && (
+                            <button type="button" className="comment-edit-action" onClick={() => { setEditingCommentId(comment.id); setEditingCommentText(comment.text); }}>Editar</button>
+                          )}
+                        </div>
                       </header>
-                      <p>{comment.text}</p>
+                      {editingCommentId === comment.id ? (
+                        <div className="comment-form">
+                          <textarea rows={3} maxLength={5000} value={editingCommentText} onChange={(event) => setEditingCommentText(event.target.value)} />
+                          <div>
+                            <button type="button" className="button ghost small" onClick={() => setEditingCommentId(null)}>Cancelar</button>
+                            <button type="button" className="button primary small" disabled={!editingCommentText.trim()} onClick={() => void saveComment(comment.id)}>Salvar</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p>{comment.text}</p>
+                      )}
                     </div>
                   </article>
                 ))
@@ -405,7 +479,7 @@ export default function ServiceOrderDetailPage() {
                 {attachmentError}
               </div>
             )}
-            {canContribute && (
+            {canContribute && !isClosed && (
               <label className="upload-box">
                 <input
                   ref={inputRef}
@@ -453,6 +527,9 @@ export default function ServiceOrderDetailPage() {
                       >
                         Baixar
                       </button>
+                      {user?.role === "OWNER" && !isClosed && (
+                        <button type="button" className="button ghost small" onClick={() => void deleteAttachment(attachment)}>Excluir</button>
+                      )}
                     </article>
                   );
                 })
@@ -591,7 +668,7 @@ export default function ServiceOrderDetailPage() {
                         : "Sem responsável"}
                   </option>
                   {users
-                    .filter((item) => item.status === "ACTIVE")
+                    .filter((item) => item.status === "ACTIVE" && item.role === "OWNER")
                     .map((item) => (
                       <option key={item.id} value={item.id}>
                         {item.name}

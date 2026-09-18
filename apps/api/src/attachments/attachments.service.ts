@@ -13,6 +13,7 @@ import {
   Prisma,
   RefType,
   PermissionModule,
+  ServiceOrderStatus,
   UserRole,
 } from '@prisma/client';
 import type { Express } from 'express';
@@ -70,8 +71,14 @@ export class AttachmentsService implements OnModuleInit {
     return extname(basename(fileName)).toLowerCase();
   }
 
+  private normalizeOriginalName(fileName: string) {
+    const decoded = Buffer.from(fileName, 'latin1').toString('utf8');
+    return decoded.includes('\uFFFD') ? fileName : decoded;
+  }
+
   private safeOriginalName(fileName: string) {
-    const cleaned = basename(fileName).replace(/[\u0000-\u001f\u007f<>:"/\\|?*]+/g, '_').trim();
+    const utf8Name = this.normalizeOriginalName(fileName);
+    const cleaned = basename(utf8Name).replace(/[\u0000-\u001f\u007f<>:"/\\|?*]+/g, '_').trim();
     return cleaned.slice(0, 240) || 'arquivo';
   }
 
@@ -106,6 +113,7 @@ export class AttachmentsService implements OnModuleInit {
       serviceOrderId,
       'anexar',
     );
+    this.ensureServiceOrderOpen(serviceOrder.status);
     const recipients =
       user.id === serviceOrder.requesterId
         ? await this.notifications.serviceOrderStaffRecipientIds(
@@ -198,7 +206,7 @@ export class AttachmentsService implements OnModuleInit {
   async findByServiceOrder(user: AuthUser, serviceOrderId: string) {
     await this.validateServiceOrderAccess(user, serviceOrderId, 'visualizar');
 
-    return this.prisma.attachment.findMany({
+    const attachments = await this.prisma.attachment.findMany({
       where: {
         tenantId: user.tenantId,
         refType: RefType.SERVICE_ORDER,
@@ -208,6 +216,12 @@ export class AttachmentsService implements OnModuleInit {
       include: attachmentInclude,
       orderBy: { createdAt: 'desc' },
     });
+    return attachments.map((attachment) => ({
+      ...attachment,
+      originalName: attachment.originalName
+        ? this.normalizeOriginalName(attachment.originalName)
+        : attachment.originalName,
+    }));
   }
 
   uploadForProject(user: AuthUser, projectId: string, file?: Express.Multer.File) { return this.uploadForTarget(user, RefType.PROJECT, projectId, file); }
@@ -269,10 +283,76 @@ export class AttachmentsService implements OnModuleInit {
     return new StreamableFile(createReadStream(filePath), {
       type: attachment.mimeType,
       disposition: `attachment; filename*=UTF-8''${encodeURIComponent(
-        attachment.originalName || attachment.fileName,
+        attachment.originalName
+          ? this.normalizeOriginalName(attachment.originalName)
+          : attachment.fileName,
       )}`,
       length: attachment.size,
     });
+  }
+
+  async removeFromServiceOrder(user: AuthUser, id: string) {
+    if (user.role !== UserRole.OWNER) {
+      throw new ForbiddenException(
+        'Apenas um proprietário pode excluir anexos de ordens de serviço.',
+      );
+    }
+    const attachment = await this.prisma.attachment.findFirst({
+      where: {
+        id,
+        tenantId: user.tenantId,
+        refType: RefType.SERVICE_ORDER,
+      },
+      select: {
+        id: true,
+        serviceOrderId: true,
+        storageKey: true,
+        originalName: true,
+        fileName: true,
+      },
+    });
+    if (!attachment?.serviceOrderId) {
+      throw new NotFoundException('Anexo não encontrado.');
+    }
+    const serviceOrder = await this.validateServiceOrderAccess(
+      user,
+      attachment.serviceOrderId,
+      'excluir',
+    );
+    this.ensureServiceOrderOpen(serviceOrder.status);
+
+    const filePath = this.resolveStorageKey(attachment.storageKey);
+    try {
+      await unlink(filePath);
+    } catch (error: unknown) {
+      if (
+        !error ||
+        typeof error !== 'object' ||
+        !('code' in error) ||
+        error.code !== 'ENOENT'
+      ) {
+        throw error;
+      }
+    }
+
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.attachment.delete({ where: { id: attachment.id } });
+      await transaction.auditLog.create({
+        data: {
+          tenantId: user.tenantId,
+          userId: user.id,
+          action: AuditAction.DELETE,
+          entity: 'ServiceOrder',
+          entityId: serviceOrder.id,
+          metadata: {
+            event: 'SERVICE_ORDER_ATTACHMENT_DELETED',
+            attachmentId: attachment.id,
+            fileName: attachment.originalName || attachment.fileName,
+          },
+        },
+      });
+    });
+    return { deleted: true };
   }
 
   private resolveInsideUploads(...segments: string[]) {
@@ -302,11 +382,17 @@ export class AttachmentsService implements OnModuleInit {
   private async validateServiceOrderAccess(
     user: AuthUser,
     serviceOrderId: string,
-    action: 'anexar' | 'visualizar' | 'baixar',
+    action: 'anexar' | 'visualizar' | 'baixar' | 'excluir',
   ) {
     const serviceOrder = await this.prisma.serviceOrder.findFirst({
       where: { id: serviceOrderId, tenantId: user.tenantId },
-      select: { id: true, title: true, requesterId: true, responsibleId: true },
+      select: {
+        id: true,
+        title: true,
+        requesterId: true,
+        responsibleId: true,
+        status: true,
+      },
     });
 
     if (!serviceOrder) {
@@ -329,6 +415,17 @@ export class AttachmentsService implements OnModuleInit {
     }
 
     return serviceOrder;
+  }
+
+  private ensureServiceOrderOpen(status: ServiceOrderStatus) {
+    if (
+      status === ServiceOrderStatus.COMPLETED ||
+      status === ServiceOrderStatus.CANCELED
+    ) {
+      throw new ForbiddenException(
+        'Não é possível alterar anexos de uma ordem de serviço encerrada.',
+      );
+    }
   }
 
   private async canWrite(user: AuthUser, module: PermissionModule) { return user.role === UserRole.OWNER || await this.permissions.has(user, module, 'edit') || await this.permissions.has(user, module, 'manage'); }

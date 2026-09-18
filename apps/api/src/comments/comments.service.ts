@@ -11,6 +11,7 @@ import {
   Prisma,
   RefType,
   PermissionModule,
+  ServiceOrderStatus,
   UserRole,
 } from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
@@ -18,6 +19,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MailService } from '../mail/mail.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
+import { UpdateCommentDto } from './dto/update-comment.dto';
 import { PermissionsService } from '../permissions/permissions.service';
 
 const commentInclude = {
@@ -62,6 +64,7 @@ export class CommentsService {
       dto.refId,
       'comentar',
     );
+    this.ensureServiceOrderOpen(serviceOrder.status);
     const recipients =
       user.id === serviceOrder.requesterId
         ? await this.notifications.serviceOrderStaffRecipientIds(
@@ -132,6 +135,52 @@ export class CommentsService {
     });
   }
 
+  async update(user: AuthUser, id: string, dto: UpdateCommentDto) {
+    const comment = await this.prisma.comment.findFirst({
+      where: { id, tenantId: user.tenantId, refType: RefType.SERVICE_ORDER },
+      select: { id: true, authorId: true, serviceOrderId: true },
+    });
+    if (!comment?.serviceOrderId) {
+      throw new NotFoundException('Comentário não encontrado.');
+    }
+    if (comment.authorId !== user.id) {
+      throw new ForbiddenException(
+        'Você só pode editar os seus próprios comentários.',
+      );
+    }
+    const serviceOrder = await this.validateServiceOrderAccess(
+      user,
+      comment.serviceOrderId,
+      'comentar',
+    );
+    this.ensureServiceOrderOpen(serviceOrder.status);
+    const text = dto.text.trim();
+    if (!text) {
+      throw new BadRequestException('O comentário não pode ficar vazio.');
+    }
+    return this.prisma.$transaction(async (transaction) => {
+      const updated = await transaction.comment.update({
+        where: { id: comment.id },
+        data: { text },
+        include: commentInclude,
+      });
+      await transaction.auditLog.create({
+        data: {
+          tenantId: user.tenantId,
+          userId: user.id,
+          action: AuditAction.UPDATE,
+          entity: 'ServiceOrder',
+          entityId: serviceOrder.id,
+          metadata: {
+            event: 'SERVICE_ORDER_COMMENT_UPDATED',
+            commentId: comment.id,
+          },
+        },
+      });
+      return updated;
+    });
+  }
+
   async findByProject(user: AuthUser, projectId: string) {
     await this.validateProjectAccess(user, projectId, false);
     return this.prisma.comment.findMany({ where: { tenantId: user.tenantId, refType: RefType.PROJECT, refId: projectId, projectId }, include: commentInclude, orderBy: { createdAt: 'asc' } });
@@ -191,7 +240,13 @@ export class CommentsService {
   ) {
     const serviceOrder = await this.prisma.serviceOrder.findFirst({
       where: { id: serviceOrderId, tenantId: user.tenantId },
-      select: { id: true, title: true, requesterId: true, responsibleId: true },
+      select: {
+        id: true,
+        title: true,
+        requesterId: true,
+        responsibleId: true,
+        status: true,
+      },
     });
 
     if (!serviceOrder) {
@@ -214,6 +269,17 @@ export class CommentsService {
     }
 
     return serviceOrder;
+  }
+
+  private ensureServiceOrderOpen(status: ServiceOrderStatus) {
+    if (
+      status === ServiceOrderStatus.COMPLETED ||
+      status === ServiceOrderStatus.CANCELED
+    ) {
+      throw new ForbiddenException(
+        'Não é possível alterar comentários de uma ordem de serviço encerrada.',
+      );
+    }
   }
 
   private async emailRecipients(

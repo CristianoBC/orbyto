@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -81,5 +82,10 @@ export class AttachmentsController {
     @Param('id') id: string,
   ): Promise<StreamableFile> {
     return this.attachmentsService.download(user, id);
+  }
+
+  @Delete(':id')
+  remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.attachmentsService.removeFromServiceOrder(user, id);
   }
 }

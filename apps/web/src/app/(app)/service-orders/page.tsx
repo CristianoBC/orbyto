@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest } from "@/lib/api";
-import type { CreateServiceOrder, ServiceOrder } from "@/types/service-order";
+import type { CreateServiceOrder, ServiceOrder, ServiceOrderStatus } from "@/types/service-order";
 import {
   EmptyState,
   ErrorState,
@@ -33,6 +33,17 @@ const initial: CreateServiceOrder = {
   dueDate: "",
 };
 const administrativeRoles = ["OWNER", "ADMIN", "MANAGER"];
+const statusFilters: Array<{ value: "ACTIVE" | "ALL" | ServiceOrderStatus; label: string }> = [
+  { value: "ACTIVE", label: "Ativas" },
+  { value: "OPEN", label: "Recebidas / abertas" },
+  { value: "IN_PROGRESS", label: "Em andamento" },
+  { value: "IN_REVIEW", label: "Em análise" },
+  { value: "WAITING_REQUESTER", label: "Aguardando solicitante" },
+  { value: "COMPLETED", label: "Concluídas" },
+  { value: "CANCELED", label: "Canceladas" },
+  { value: "ALL", label: "Todas" },
+];
+const pageSize = 30;
 
 export default function ServiceOrdersPage() {
   const { user, loading: authLoading, can } = useAuth();
@@ -45,23 +56,37 @@ export default function ServiceOrdersPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [lookupOptions, setLookupOptions] = useState<ServiceOrderLookupOptions>(emptyServiceOrderOptions);
+  const [statusFilter, setStatusFilter] = useState<"ACTIVE" | "ALL" | ServiceOrderStatus>("ACTIVE");
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     setError("");
-    const endpoint =
+    const baseEndpoint =
       administrativeRoles.includes(user.role) || user.role === "VIEWER"
         ? "/service-orders"
         : "/service-orders/my";
+    const query = new URLSearchParams({ page: String(page), limit: String(pageSize) });
+    if (statusFilter === "ALL") query.set("view", "ALL");
+    else if (statusFilter !== "ACTIVE") query.set("status", statusFilter);
+    if (appliedSearch) query.set("text", appliedSearch);
     try {
-      setItems(await apiRequest<ServiceOrder[]>(endpoint));
+      setItems(await apiRequest<ServiceOrder[]>(`${baseEndpoint}?${query}`));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Erro ao carregar.");
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, statusFilter, appliedSearch, page]);
+
+  function applyFilters(event: FormEvent) {
+    event.preventDefault();
+    setPage(1);
+    setAppliedSearch(search.trim());
+  }
 
   useEffect(() => {
     if (!authLoading && user) void load();
@@ -103,6 +128,22 @@ export default function ServiceOrdersPage() {
         action={canCreate ? () => setOpen(true) : undefined}
         label={canCreate ? "Nova ordem" : undefined}
       />
+      <form className="report-filters" onSubmit={applyFilters}>
+        <label>
+          Status
+          <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value as typeof statusFilter); setPage(1); }}>
+            {statusFilters.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label>
+          Buscar
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Título, solicitante ou e-mail" />
+        </label>
+        <div className="report-filter-actions">
+          <button className="button primary" disabled={loading}>Aplicar filtros</button>
+          <button type="button" className="button ghost" onClick={() => { setSearch(""); setAppliedSearch(""); setStatusFilter("ACTIVE"); setPage(1); }}>Limpar</button>
+        </div>
+      </form>
       {error && <ErrorState message={error} retry={load} />}
       {loading ? (
         <LoadingState />
@@ -158,6 +199,11 @@ export default function ServiceOrdersPage() {
               </div>
             </Link>
           ))}
+          <div className="report-pagination">
+            <button className="button ghost" type="button" disabled={page === 1 || loading} onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</button>
+            <span>Página {page}</span>
+            <button className="button ghost" type="button" disabled={items.length < pageSize || loading} onClick={() => setPage((value) => value + 1)}>Próxima</button>
+          </div>
         </div>
       )}
       {open && (

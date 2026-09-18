@@ -138,6 +138,8 @@ export class ServiceOrdersService {
       }),
       include: serviceOrderInclude,
       orderBy: { createdAt: 'desc' },
+      skip: (query.page - 1) * query.limit,
+      take: query.limit,
     });
   }
 
@@ -163,6 +165,16 @@ export class ServiceOrdersService {
       where: this.buildWhere(query, { tenantId }),
       include: serviceOrderInclude,
       orderBy: { createdAt: 'desc' },
+      skip: (query.page - 1) * query.limit,
+      take: query.limit,
+    });
+  }
+
+  eligibleResponsibles(tenantId: string) {
+    return this.prisma.user.findMany({
+      where: { tenantId, role: UserRole.OWNER, status: 'ACTIVE' },
+      select: { id: true, name: true, email: true, role: true, status: true },
+      orderBy: { name: 'asc' },
     });
   }
 
@@ -203,15 +215,37 @@ export class ServiceOrdersService {
       throw new NotFoundException('Ordem de serviço não encontrada.');
     }
 
+    const closedStatuses: ServiceOrderStatus[] = [
+      ServiceOrderStatus.COMPLETED,
+      ServiceOrderStatus.CANCELED,
+    ];
+    if (closedStatuses.includes(current.status)) {
+      const fields = Object.keys(dto);
+      const isReopening =
+        fields.length === 1 &&
+        fields[0] === 'status' &&
+        dto.status === ServiceOrderStatus.OPEN;
+      if (user.role !== UserRole.OWNER || !isReopening) {
+        throw new ForbiddenException(
+          'Ordens de serviço concluídas ou canceladas são somente leitura. Apenas um proprietário pode reabri-las.',
+        );
+      }
+    }
+
     if (dto.responsibleId) {
       const responsible = await this.prisma.user.findFirst({
-        where: { id: dto.responsibleId, tenantId: user.tenantId },
+        where: {
+          id: dto.responsibleId,
+          tenantId: user.tenantId,
+          role: UserRole.OWNER,
+          status: 'ACTIVE',
+        },
         select: { id: true },
       });
 
       if (!responsible) {
         throw new NotFoundException(
-          'Responsável não encontrado neste ambiente.',
+          'Responsável deve ser um proprietário ativo deste ambiente.',
         );
       }
     }
@@ -424,7 +458,23 @@ export class ServiceOrdersService {
 
     return {
       ...required,
-      status: query.status,
+      status:
+        query.status ??
+        (query.view === 'OPEN_RECEIVED'
+          ? {
+              in: [
+                ServiceOrderStatus.OPEN,
+                ServiceOrderStatus.IN_REVIEW,
+              ],
+            }
+          : query.view === 'ALL'
+            ? undefined
+            : {
+              notIn: [
+                ServiceOrderStatus.COMPLETED,
+                ServiceOrderStatus.CANCELED,
+              ],
+            }),
       priority: query.priority,
       requesterId: required.requesterId ?? query.requesterId,
       responsibleId: query.responsibleId,
@@ -434,6 +484,8 @@ export class ServiceOrdersService {
             OR: [
               { title: { contains: text, mode: 'insensitive' } },
               { description: { contains: text, mode: 'insensitive' } },
+              { requester: { name: { contains: text, mode: 'insensitive' } } },
+              { requester: { email: { contains: text, mode: 'insensitive' } } },
             ],
           }
         : {}),

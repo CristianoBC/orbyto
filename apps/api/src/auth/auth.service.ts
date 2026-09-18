@@ -72,7 +72,7 @@ export class AuthService {
       this.prisma.user.update({ where: { id: user.id }, data: { passwordResetTokenHash: tokenHash, passwordResetExpiresAt: expiresAt, passwordResetUsedAt: null } }),
       this.prisma.auditLog.create({ data: { tenantId: user.tenantId, userId: user.id, action: AuditAction.UPDATE, entity: 'User', entityId: user.id, metadata: { operation: 'PASSWORD_RESET_REQUESTED', expiresAt } } }),
     ]);
-    const webUrl = (this.config.get<string>('FRONTEND_URL') ?? this.config.get<string>('APP_WEB_URL') ?? this.config.get<string>('WEB_URL') ?? 'http://localhost:3000').replace(/\/$/, '');
+    const webUrl = (this.config.get<string>('FRONTEND_URL') ?? 'https://www.orbyto.com.br').replace(/\/$/, '');
     const resetUrl = `${webUrl}/reset-password?token=${encodeURIComponent(token)}`;
     const delivery = await this.mail.sendPasswordReset({ to: user.email, name: user.name, resetUrl, expiresInMinutes: 30 });
     await this.prisma.auditLog.create({

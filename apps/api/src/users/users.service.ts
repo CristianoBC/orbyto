@@ -283,7 +283,7 @@ export class UsersService {
   }
 
   private async deliverInvitation(actor: AuthUser, target: { id: string; name: string; email: string }, token: string, expiresAt: Date, failureOperation: string) {
-    const webUrl = (this.config.get<string>('FRONTEND_URL') ?? this.config.get<string>('APP_WEB_URL') ?? this.config.get<string>('WEB_URL') ?? 'http://localhost:3000').replace(/\/$/, '');
+    const webUrl = (this.config.get<string>('FRONTEND_URL') ?? 'https://www.orbyto.com.br').replace(/\/$/, '');
     const inviteUrl = `${webUrl}/accept-invite?token=${encodeURIComponent(token)}`;
     const delivery = await this.mail.sendUserInvitation({ to: target.email, name: target.name, inviteUrl, expiresInHours: this.inviteExpiryHours() });
     if (delivery.sent) return;

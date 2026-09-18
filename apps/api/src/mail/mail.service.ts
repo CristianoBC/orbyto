@@ -310,9 +310,7 @@ export class MailService {
 
   webUrl(path: string) {
     const base = (
-      this.config.get<string>('APP_WEB_URL') ??
-      this.config.get<string>('WEB_URL') ??
-      'http://localhost:3000'
+      this.config.get<string>('FRONTEND_URL') ?? 'https://www.orbyto.com.br'
     ).replace(/\/$/, '');
     return `${base}${path.startsWith('/') ? path : `/${path}`}`;
   }

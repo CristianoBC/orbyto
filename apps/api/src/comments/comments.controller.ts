@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateTargetCommentDto } from './dto/create-target-comment.dto';
+import { UpdateCommentDto } from './dto/update-comment.dto';
 import { PermissionModule, RefType } from '@prisma/client';
 import { RequirePermission } from '../permissions/permissions.decorator';
 import { PermissionsGuard } from '../permissions/permissions.guard';
@@ -53,5 +54,14 @@ export class CommentsController {
     @Param('serviceOrderId') serviceOrderId: string,
   ) {
     return this.commentsService.findByServiceOrder(user, serviceOrderId);
+  }
+
+  @Patch(':id')
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateCommentDto,
+  ) {
+    return this.commentsService.update(user, id, dto);
   }
 }

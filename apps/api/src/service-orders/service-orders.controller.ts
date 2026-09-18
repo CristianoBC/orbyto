@@ -54,6 +54,13 @@ export class ServiceOrdersController {
     return this.serviceOrdersService.findAll(user.tenantId, query);
   }
 
+  @Get('eligible-responsibles')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission(PermissionModule.SERVICE_ORDERS, 'manage')
+  eligibleResponsibles(@CurrentUser() user: AuthUser) {
+    return this.serviceOrdersService.eligibleResponsibles(user.tenantId);
+  }
+
   @Get(':id')
   @UseGuards(PermissionsGuard)
   @RequirePermission(PermissionModule.SERVICE_ORDERS)

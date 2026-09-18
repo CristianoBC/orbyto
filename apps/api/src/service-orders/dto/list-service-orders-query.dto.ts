@@ -1,7 +1,12 @@
 import { Priority, ServiceOrderStatus } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 
 export class ListServiceOrdersQueryDto {
+  @IsOptional()
+  @IsIn(['ACTIVE', 'OPEN_RECEIVED', 'ALL'])
+  view?: 'ACTIVE' | 'OPEN_RECEIVED' | 'ALL';
+
   @IsOptional()
   @IsEnum(ServiceOrderStatus)
   status?: ServiceOrderStatus;
@@ -25,4 +30,17 @@ export class ListServiceOrdersQueryDto {
   @IsOptional()
   @IsString()
   text?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page = 1;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit = 50;
 }
